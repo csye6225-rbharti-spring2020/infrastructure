@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: This template deploys a VPC, 3 Public subnets, each in a different availability zone in the same region in the same VPC.
+             Also provides Internet gateway resource and route table for all the subnets created.
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+
+  VpcCIDR:
+    Description: IP range (CIDR notation) for this VPC
+    Type: String
+
+  PublicSubnet1CIDR:
+    Description: IP range (CIDR notation) for the first public subnet in the first Availability Zone
+    Type: String
+
+  PublicSubnet2CIDR:
+    Description: IP range (CIDR notation) for the second public subnet in the second Availability Zone
+    Type: String
+
+  PublicSubnet3CIDR:
+    Description: IP range (CIDR notation) for the third public subnet in the third Availability Zone
+    Type: String
+
+  vpcRegion:
+    Description: Region for the infrastructure, used for selecting Availability zones
+    Type: String
+
+Resources:
+  #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  #Creates the first subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the first availability zone in the same region
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 0
+        - Fn::GetAZs: !Ref vpcRegion
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+
+  #Creates the second subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the second availability zone in the same region
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 1
+        - Fn::GetAZs: !Ref vpcRegion
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+
+  #Creates the third subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the third availability zone in the same region
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 2
+        - Fn::GetAZs: !Ref vpcRegion
+      CidrBlock: !Ref PublicSubnet3CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ3)
+
+  #Creates an Internet Gateway for myVpc
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn: VPC
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  #Attaches the Internet Gateway created above to myVpc
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  
+  #Public Route Table for the Vpc
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Routes
+
+  #Default Route Entry directing all the traffic to the Internet Gateway created above
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  #Associating Subnet 1 to the Route Table
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  #Associating Subnet 2 to the Route Table
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  #Associating Subnet 3 to the Route Table
+  PublicSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet3
+
+#Contains all the values available via this Stack
+Outputs:
+  #VPC 
+  VPC:
+    Description: A reference to the created VPC
+    Value: !Ref VPC
+
+  #An array of all the Public Subnets created
+  PublicSubnets:
+    Description: A list of the public subnets
+    Value: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2, !Ref PublicSubnet3 ]]
+
+  #Public Subnet 1
+  PublicSubnet1:
+    Description: First public subnet in the 1st Availability Zone
+    Value: !Ref PublicSubnet1
+
+  #Public Subnet 2
+  PublicSubnet2:
+    Description: Second public subnet in the 2nd Availability Zone
+    Value: !Ref PublicSubnet2
+
+  #Public Subnet 3
+  PublicSubnet2:
+    Description: Third public subnet in the 3rd Availability Zone
+    Value: !Ref PublicSubnet3
