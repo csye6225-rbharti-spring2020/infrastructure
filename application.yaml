@@ -28,6 +28,21 @@ Parameters:
     Description: Region for the infrastructure, used for selecting Availability zones
     Type: String
 
+  InstanceTypeParameter: 
+    Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro.
+    Type: String
+    Default: t2.micro
+    AllowedValues: 
+      - t2.micro
+      - m1.small
+      - m1.large
+  
+  KeyName:
+    Description: Name of an existing EC2 KeyPair 
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: ec2
+    ConstraintDescription: Must provide an existing EC2 KeyPair.
+  
   Mappings:
   AWSRegionToAMI:
     us-east-1:
@@ -52,12 +67,13 @@ Resources:
     Type: AWS::EC2::Instance                     
     Properties:
       ImageId:
-        #Finds the Region of the stack and uses the AMI on the basis of that
+        #Uses the Region to use the already created AMI image
         !FindInMap                                 
           - AWSRegionToAMI                         
           - !Ref AWS::Region
           - AMIID
-      InstanceType: t2.micro
+      InstanceType:
+        Ref: InstanceTypeParameter
       KeyName: !Ref KeyName
       SecurityGroupIds: !Ref SecurityGroupIDs
       SubnetId: !Ref SubnetID
