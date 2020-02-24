@@ -28,6 +28,13 @@ Parameters:
     Description: Region for the infrastructure, used for selecting Availability zones
     Type: String
 
+  Mappings:
+  AWSRegionToAMI:
+    us-east-1:
+      AMIID: ami-0e45550c321406f56
+    us-east-2:
+      AMIID: ami-c55673a0
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -39,6 +46,38 @@ Resources:
       Tags:
         - Key: Name
           Value: !Ref EnvironmentName
+
+  #Creates the EC2 instance, 
+  EC2Instance:
+    Type: AWS::EC2::Instance                     
+    Properties:
+      ImageId:
+        #Finds the Region of the stack and uses the AMI on the basis of that
+        !FindInMap                                 
+          - AWSRegionToAMI                         
+          - !Ref AWS::Region
+          - AMIID
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      SecurityGroupIds: !Ref SecurityGroupIDs
+      SubnetId: !Ref SubnetID
+      UserData:
+        Fn::Base64:                                # YAML makes userdata much cleaner
+          !Sub |
+              #!/bin/bash -ex
+              yum install -y httpd;
+              echo "<html>I love YAML CloudFormation!!</html>" > /var/www/html/index.html;
+              cd /var/www/html;
+              chmod 755 index.html;
+              service httpd start;
+              chkconfig httpd on;
+      Tags:                                      # Tags are an example of a sequence of mappings in YAML,
+        -                                        # each key/value pair is separated by a hyphen
+          Key: Name
+          Value: CloudFormation Test - YAML      
+        -
+          Key: Environment
+          Value: Development
 
   #Creates the first subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the first availability zone in the same region
   PublicSubnet1:
