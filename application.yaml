@@ -170,8 +170,13 @@ Resources:
             VolumeSize: !Ref Ec2InstanceSize
             VolumeType: gp2
             DeleteOnTermination: true
-      SecurityGroups: [!Ref InstanceSecurityGroup]
       IamInstanceProfile: !Ref Ec2InstanceIAMRole
+      NetworkInterfaces: 
+      - AssociatePublicIpAddress: "true"
+        DeviceIndex: "0"
+        GroupSet: 
+          - !Ref InstanceSecurityGroup
+        SubnetId: !Ref PublicSubnet1
       UserData: !Base64 
         'Fn::Join':
           - ''
@@ -227,7 +232,7 @@ Resources:
       MasterUsername: !Ref DBUsername
       MasterUserPassword: !Ref DBPassword
       MultiAZ: !Ref MultiAZ
-      SecurityGroups: [!Ref RDSInstanceSecurityGroup]
+      VPCSecurityGroups: [!Ref RDSInstanceSecurityGroup]
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: !Ref DBPublicAccessibility
 
@@ -253,43 +258,43 @@ Resources:
       GroupDescription: Enables TCP traffic on ports 22, 80, 443 and 8080
       VpcId: !Ref VPC
       SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: '22'
-          ToPort: '22'
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: '80'
-          ToPort: '80'
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: '443'
-          ToPort: '443'
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: '8080'
-          ToPort: '8080'
-          CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: 0.0.0.0/0
       Tags:                                      
-        -                                        
-          Key: Name
-          Value: application 
+      -                                        
+        Key: Name
+        Value: application 
 
   #Creates the EC2 Security Group for the RDS Instance
   RDSInstanceSecurityGroup: 
     Type: 'AWS::EC2::SecurityGroup'
-    DependsOn: VPC
+    DependsOn: InstanceSecurityGroup
     Properties:
       GroupDescription: Enables TCP traffic on port 3306 for MySQL
       VpcId: !Ref VPC
       SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: '3306'
-          ToPort: '3306'
-          SourceSecurityGroupId: !GetAtt InstanceSecurityGroup.GroupId
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        SourceSecurityGroupId: !GetAtt InstanceSecurityGroup.GroupId
       Tags:                                      
-        -                                        
-          Key: Name
-          Value: database
+      -                                        
+        Key: Name
+        Value: database
 
   #Creates the first subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the first availability zone in the same region
   PublicSubnet1:
@@ -302,8 +307,8 @@ Resources:
       CidrBlock: !Ref PublicSubnet1CIDR
       MapPublicIpOnLaunch: true
       Tags:
-        - Key: Name
-          Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+      - Key: Name
+        Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
 
   #Creates the second subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the second availability zone in the same region
   PublicSubnet2:
@@ -316,8 +321,8 @@ Resources:
       CidrBlock: !Ref PublicSubnet2CIDR
       MapPublicIpOnLaunch: true
       Tags:
-        - Key: Name
-          Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+      - Key: Name
+        Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
 
   #Creates the third subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the third availability zone in the same region
   PublicSubnet3:
@@ -330,8 +335,8 @@ Resources:
       CidrBlock: !Ref PublicSubnet3CIDR
       MapPublicIpOnLaunch: true
       Tags:
-        - Key: Name
-          Value: !Sub ${EnvironmentName} Public Subnet (AZ3)
+      - Key: Name
+        Value: !Sub ${EnvironmentName} Public Subnet (AZ3)
 
   #Creates an Internet Gateway for myVpc
   InternetGateway:
@@ -339,8 +344,8 @@ Resources:
     DependsOn: VPC
     Properties:
       Tags:
-        - Key: Name
-          Value: !Ref EnvironmentName
+      - Key: Name
+        Value: !Ref EnvironmentName
 
   #Attaches the Internet Gateway created above to myVpc
   InternetGatewayAttachment:
