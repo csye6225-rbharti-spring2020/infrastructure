@@ -38,11 +38,93 @@ Parameters:
       - m1.large
   
   KeyName:
-    Description: Name of an existing EC2 KeyPair 
+    Description: Name of an existing EC2 KeyPair to SSH into the instance
     Type: AWS::EC2::KeyPair::KeyName
     Default: ec2
     ConstraintDescription: Must provide an existing EC2 KeyPair.
   
+  Ec2InstanceSize:
+    Description: Size of the EC2 Instance Size
+    Type: Number
+    Default: '20'
+
+  Ec2InstanceName:
+    Description: Name of the EC2 instance
+    Type: String
+    Default: 'myEC2Instance'
+
+  Ec2InstanceIAMRole:
+    Description: Name of the EC2 instance IAM role already existing
+    Type: String
+    Default: 'EC2-CSYE6225'
+
+  DBEngine:
+    Description: Name of the DBEgine
+    Type: String
+    Default: 'MySQL'
+
+  DBInstanceClass:
+    Default: 'db.t3.micro'
+    Description: DB instance class
+    Type: String
+    ConstraintDescription: Must select a valid DB instance type.
+
+  DBInstanceID:
+    Default: 'csye6225-spring2020'
+    Description: My database instance
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+
+  DBPassword:
+    NoEcho: 'true'
+    Description: Password MySQL database access
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.
+
+  DBAllocatedStorage:
+    Default: '50'
+    Description: The size of the database (GiB)
+    Type: Number
+    MinValue: '5'
+    MaxValue: '1024'
+    ConstraintDescription: must be between 20 and 65536 GiB.
+
+  DBName:
+    Default: 'csye6225'
+    Description: My database
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters. 
+
+  MultiAZ:
+    Description: Specifies if the database instance is a multiple Availability Zone deployment.
+    Type: String
+    AllowedValues: [true, false]
+    Default: true
+    ConstraintDescription: "Value must be boolean value." 
+
+  DBPublicAccessibility:
+    Description: Specifies if the DB instance is publically available.
+    Type: String
+    AllowedValues: [true, false]
+    Default: false
+    ConstraintDescription: "Value must be boolean value." 
+
   Mappings:
   AWSRegionToAMI:
     us-east-1:
@@ -62,9 +144,27 @@ Resources:
         - Key: Name
           Value: !Ref EnvironmentName
 
-  #Creates the EC2 instance, 
+  #Creates the S3 Bucket
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToStandardIAAfter30Days
+            Status: 'Enabled'
+            Transition:
+              TransitionInDays: 30
+              StorageClass: 'STANDARD_IA'
+
+  #Creates the EC2 instance and sets its configuration 
   EC2Instance:
-    Type: AWS::EC2::Instance                     
+    Type: AWS::EC2::Instance
+    DependsOn: DBinstance                     
     Properties:
       ImageId:
         #Uses the Region to use the already created AMI image
@@ -75,25 +175,136 @@ Resources:
       InstanceType:
         Ref: InstanceTypeParameter
       KeyName: !Ref KeyName
-      SecurityGroupIds: !Ref SecurityGroupIDs
-      SubnetId: !Ref SubnetID
-      UserData:
-        Fn::Base64:                                # YAML makes userdata much cleaner
-          !Sub |
-              #!/bin/bash -ex
-              yum install -y httpd;
-              echo "<html>I love YAML CloudFormation!!</html>" > /var/www/html/index.html;
-              cd /var/www/html;
-              chmod 755 index.html;
-              service httpd start;
-              chkconfig httpd on;
-      Tags:                                      # Tags are an example of a sequence of mappings in YAML,
-        -                                        # each key/value pair is separated by a hyphen
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref Ec2InstanceSize
+            VolumeType: gp2
+            DeleteOnTermination: true
+      SecurityGroups: [!Ref InstanceSecurityGroup]
+      IamInstanceProfile: !Ref Ec2InstanceIAMRole
+      UserData: !Base64 
+        'Fn::Join':
+          - ''
+          - - |
+              #!/bin/bash 
+            - |
+              set -e -x 
+            - |
+              sudo echo DBCreationType=update >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export DBCreationType >> /etc/profile.d/envvariable.sh 
+            - !Sub |
+              sudo echo username=${DBUsername} >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export username >> /etc/profile.d/envvariable.sh 
+            - !Sub >
+              sudo echo password=${DBPassword} >>
+              /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export password >> /etc/profile.d/envvariable.sh 
+            - !Join 
+              - ''
+              - - 'echo awsRDS=jdbc:mysql://'
+                - !GetAtt 
+                  - DBinstance
+                  - Endpoint.Address
+                - !Sub |
+                  :3306/${dbName} >> /etc/profile.d/envvariable.sh 
+            - !Join 
+              - ''
+              - - sudo echo bucketName=
+                - !Ref S3Bucket
+                - |
+                  >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export DBinstance >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export S3Bucket >> /etc/profile.d/envvariable.sh
+      Tags:                                      
+        -                                        
           Key: Name
-          Value: CloudFormation Test - YAML      
-        -
-          Key: Environment
-          Value: Development
+          Value: !Ref Ec2InstanceName   
+
+  #Creates the RDS DB instance and sets its configuration 
+  DBinstance: 
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      DBInstanceIdentifier: !Ref DBInstanceID
+      DBName: !Ref DBName
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: !Ref DBAllocatedStorage
+      Engine: !Ref DBEngine
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      MultiAZ: !Ref MultiAZ
+      DBSecurityGroups: [!Ref RDSInstanceSecurityGroup]
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: !Ref DBPublicAccessibility
+
+  #DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet Group for DB
+      SubnetIds:
+      - Ref: PublicSubnet1
+      - Ref: PublicSubnet2
+      - Ref: PublicSubnet3
+      Tags:
+      - Key: Name
+        Value:
+          Ref: ${EnvironmentName} DBSubnetGroup
+
+  #Creates the EC2 Security Group for the EC2 instance
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn: VPC
+    GroupName: 'application'
+    Properties:
+      GroupDescription: Enables TCP traffic on ports 22, 80, 443 and 8080
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '8080'
+          ToPort: '8080'
+          CidrIp: 0.0.0.0/0
+      Tags:                                      
+        -                                        
+          Key: Name
+          Value: application 
+
+  #Creates the EC2 Security Group for the RDS Instance
+  RDSInstanceSecurityGroup: 
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn: VPC
+    Properties:
+      GroupDescription: Enables TCP traffic on port 3306 for MySQL
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          CidrIp: 0.0.0.0/0
+          SourceSecurityGroupId: 
+            Fn::GetAtt:
+            - InstanceSecurityGroup
+      Tags:                                      
+        -                                        
+          Key: Name
+          Value: database
 
   #Creates the first subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the first availability zone in the same region
   PublicSubnet1:
