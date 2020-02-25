@@ -7,27 +7,22 @@ Parameters:
   EnvironmentName:
     Description: An environment name that is prefixed to resource names
     Type: String
-    Default: myStack
 
   VpcCIDR:
     Description: IP range (CIDR notation) for this VPC
     Type: String
-    Default: 10.25.0.0/16
 
   PublicSubnet1CIDR:
     Description: IP range (CIDR notation) for the first public subnet in the first Availability Zone
     Type: String
-    Default: 10.25.10.0/24
 
   PublicSubnet2CIDR:
     Description: IP range (CIDR notation) for the second public subnet in the second Availability Zone
     Type: String
-    Default: 10.25.11.0/24
 
   PublicSubnet3CIDR:
     Description: IP range (CIDR notation) for the third public subnet in the third Availability Zone
     Type: String
-    Default: 10.25.12.0/24
 
   vpcRegion:
     Description: Region for the infrastructure, used for selecting Availability zones
@@ -37,7 +32,6 @@ Parameters:
   InstanceTypeParameter: 
     Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro.
     Type: String
-    Default: t2.micro
     AllowedValues: 
       - t2.micro
       - m1.small
@@ -46,37 +40,30 @@ Parameters:
   KeyName:
     Description: Name of an existing EC2 KeyPair to SSH into the instance
     Type: AWS::EC2::KeyPair::KeyName
-    Default: ec2
     ConstraintDescription: Must provide an existing EC2 KeyPair.
   
   Ec2InstanceSize:
     Description: Size of the EC2 Instance Size
     Type: Number
-    Default: '20'
 
   Ec2InstanceName:
     Description: Name of the EC2 instance
     Type: String
-    Default: 'myEC2Instance'
 
   Ec2InstanceIAMRole:
     Description: Name of the EC2 instance IAM role already existing
     Type: String
-    Default: 'EC2-CSYE6225'
 
   DBEngine:
     Description: Name of the DBEgine
     Type: String
-    Default: 'MySQL'
 
   DBInstanceClass:
-    Default: 'db.t3.micro'
     Description: DB instance class
     Type: String
     ConstraintDescription: Must select a valid DB instance type.
 
   DBInstanceID:
-    Default: 'csye6225-spring2020'
     Description: My database instance
     Type: String
     MinLength: '1'
@@ -101,7 +88,6 @@ Parameters:
     ConstraintDescription: must contain only alphanumeric characters.
 
   DBAllocatedStorage:
-    Default: '50'
     Description: The size of the database (GiB)
     Type: Number
     MinValue: '5'
@@ -109,7 +95,6 @@ Parameters:
     ConstraintDescription: must be between 20 and 65536 GiB.
 
   DBName:
-    Default: 'csye6225'
     Description: My database
     Type: String
     MinLength: '1'
@@ -131,8 +116,8 @@ Parameters:
     Default: false
     ConstraintDescription: "Value must be boolean value." 
 
-  Mappings:
-  AWSRegionToAMI:
+Mappings:
+  RegionMap:
     us-east-1:
       AMIID: ami-0e45550c321406f56
     us-east-2:
@@ -148,8 +133,7 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value:
-            Ref: ${EnvironmentName} VPC
+          Value: !Sub ${EnvironmentName} VPC
 
   #Creates the S3 Bucket
   S3Bucket:
@@ -173,12 +157,10 @@ Resources:
     Type: AWS::EC2::Instance
     DependsOn: DBinstance                     
     Properties:
-      ImageId:
-        #Uses the Region to use the already created AMI image
-        !FindInMap                                 
-          - AWSRegionToAMI                         
-          - !Ref AWS::Region
-          - AMIID
+      ImageId: !FindInMap                                 
+        - RegionMap                         
+        - !Ref vpcRegion
+        - AMIID
       InstanceType:
         Ref: InstanceTypeParameter
       KeyName: !Ref KeyName
@@ -217,7 +199,7 @@ Resources:
                   - DBinstance
                   - Endpoint.Address
                 - !Sub |
-                  :3306/${dbName} >> /etc/profile.d/envvariable.sh 
+                  :3306/${DBName} >> /etc/profile.d/envvariable.sh 
             - !Join 
               - ''
               - - sudo echo bucketName=
@@ -245,7 +227,7 @@ Resources:
       MasterUsername: !Ref DBUsername
       MasterUserPassword: !Ref DBPassword
       MultiAZ: !Ref MultiAZ
-      DBSecurityGroups: [!Ref RDSInstanceSecurityGroup]
+      SecurityGroups: [!Ref RDSInstanceSecurityGroup]
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: !Ref DBPublicAccessibility
 
@@ -260,15 +242,14 @@ Resources:
       - Ref: PublicSubnet3
       Tags:
       - Key: Name
-        Value:
-          Ref: ${EnvironmentName} DBSubnetGroup
+        Value: !Sub ${EnvironmentName} DBSubnetGroup
 
   #Creates the EC2 Security Group for the EC2 instance
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     DependsOn: VPC
-    GroupName: 'application'
     Properties:
+      GroupName: 'application'
       GroupDescription: Enables TCP traffic on ports 22, 80, 443 and 8080
       VpcId: !Ref VPC
       SecurityGroupIngress:
@@ -304,10 +285,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: '3306'
           ToPort: '3306'
-          CidrIp: 0.0.0.0/0
-          SourceSecurityGroupId: 
-            Fn::GetAtt:
-            - InstanceSecurityGroup
+          SourceSecurityGroupId: !GetAtt InstanceSecurityGroup.GroupId
       Tags:                                      
         -                                        
           Key: Name
