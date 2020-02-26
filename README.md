@@ -15,7 +15,7 @@ aws --profile dev cloudformation create-stack \
     ParameterKey=PublicSubnet1CIDR,ParameterValue=$PublicSubnet1CIDR \
     ParameterKey=PublicSubnet2CIDR,ParameterValue=$PublicSubnet2CIDR \
     ParameterKey=PublicSubnet3CIDR,ParameterValue=$PublicSubnet3CIDR \
-    ParameterKey=vpcRegion,ParameterValue=$vpcRegion \
+    ParameterKey=awsRegion,ParameterValue=$awsRegion \
     ParameterKey=InstanceTypeParameter,ParameterValue=$InstanceTypeParameter \
     ParameterKey=KeyName,ParameterValue=$KeyName \
     ParameterKey=Ec2InstanceSize,ParameterValue=$Ec2InstanceSize \
