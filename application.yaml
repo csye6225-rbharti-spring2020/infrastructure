@@ -1,7 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: This template deploys a VPC, 3 Public subnets, each in a different availability zone in the same region in the same VPC.
-             Also provides Internet gateway resource and route table for all the subnets created.
+Description: Application Stack Template. 
 
 Parameters:
   EnvironmentName:
@@ -48,10 +47,6 @@ Parameters:
 
   Ec2InstanceName:
     Description: Name of the EC2 instance
-    Type: String
-
-  Ec2InstanceIAMRole:
-    Description: Name of the EC2 instance IAM role already existing
     Type: String
 
   DBEngine:
@@ -116,12 +111,34 @@ Parameters:
     Default: false
     ConstraintDescription: "Value must be boolean value." 
 
-Mappings:
-  RegionMap:
-    us-east-1:
-      AMIID: ami-0e45550c321406f56
-    us-east-2:
-      AMIID: ami-c55673a0
+  AMIID:
+    Description: AMI-ID for the EC2 Instance.
+    Type: String
+    Default: ami-0e45550c321406f56
+
+  VpcName:
+    Description: VPC Name.
+    Type: String
+
+  EC2RoleName:
+    Description: EC2 Role Name.
+    Type: String
+    Default: EC2-CSYE6225
+
+  EC2RolePolicyName:
+    Description: EC2 Role Policy Name.
+    Type: String
+    Default: WebAppS3
+
+  InstanceSecurityGroupName:
+    Description: EC2 Security Group Name.
+    Type: String
+    Default: application
+
+  RDSInstanceSecurityGroupName:
+    Description: RDS Security Group Name.
+    Type: String
+    Default: database
 
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
@@ -133,7 +150,7 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: !Sub ${EnvironmentName} VPC
+          Value: !Ref VpcName
 
   #Creates the S3 Bucket
   S3Bucket:
@@ -157,10 +174,7 @@ Resources:
     Type: AWS::EC2::Instance
     DependsOn: DBinstance                     
     Properties:
-      ImageId: !FindInMap                                 
-        - RegionMap                         
-        - !Ref vpcRegion
-        - AMIID
+      ImageId: !Ref AMIID
       InstanceType:
         Ref: InstanceTypeParameter
       KeyName: !Ref KeyName
@@ -170,7 +184,7 @@ Resources:
             VolumeSize: !Ref Ec2InstanceSize
             VolumeType: gp2
             DeleteOnTermination: true
-      IamInstanceProfile: !Ref Ec2InstanceIAMRole
+      IamInstanceProfile: !Ref EC2S3InstanceProfile
       NetworkInterfaces: 
       - AssociatePublicIpAddress: "true"
         DeviceIndex: "0"
@@ -187,7 +201,15 @@ Resources:
             - |
               sudo echo DBCreationType=update >> /etc/profile.d/envvariable.sh 
             - |
-              sudo echo export DBCreationType >> /etc/profile.d/envvariable.sh 
+              sudo echo export DBCreationType >> /etc/profile.d/envvariable.sh
+            - |
+              sudo echo appProfile=AWS >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export appProfile >> /etc/profile.d/envvariable.sh
+            - |
+              sudo echo DBDialect=org.hibernate.dialect.MySQL5Dialect >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export DBDialect >> /etc/profile.d/envvariable.sh  
             - !Sub |
               sudo echo username=${DBUsername} >> /etc/profile.d/envvariable.sh 
             - |
@@ -199,7 +221,7 @@ Resources:
               sudo echo export password >> /etc/profile.d/envvariable.sh 
             - !Join 
               - ''
-              - - 'echo awsRDS=jdbc:mysql://'
+              - - 'echo myRDS=jdbc:mysql://'
                 - !GetAtt 
                   - DBinstance
                   - Endpoint.Address
@@ -212,9 +234,9 @@ Resources:
                 - |
                   >> /etc/profile.d/envvariable.sh 
             - |
-              sudo echo export DBinstance >> /etc/profile.d/envvariable.sh 
+              sudo echo export myRDS >> /etc/profile.d/envvariable.sh 
             - |
-              sudo echo export S3Bucket >> /etc/profile.d/envvariable.sh
+              sudo echo export bucketName >> /etc/profile.d/envvariable.sh
       Tags:                                      
         -                                        
           Key: Name
@@ -236,6 +258,48 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: !Ref DBPublicAccessibility
 
+  #Creates the EC2 IAM Role
+  EC2S3IAMRole: 
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref EC2RoleName
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+
+  #Creates the EC2 IAM Role's Policy
+  EC2S3RolePolicies: 
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: !Ref EC2RolePolicyName
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: 'Allow'
+            Action: ["s3:GetObject", "s3:DeleteObject", "s3:PutObject"]
+            Resource: 
+              - !Join ['', ['arn:aws:s3:::', !Ref S3Bucket ]]
+              - !Join ['', ['arn:aws:s3:::', !Ref S3Bucket, '/*' ]]
+      Roles: 
+        - 
+          Ref: "EC2S3IAMRole"
+  
+  #Creates the instance profile for EC2 IAM Role
+  EC2S3InstanceProfile: 
+    Type: "AWS::IAM::InstanceProfile"
+    Properties: 
+      Path: "/"
+      Roles: 
+        - 
+          Ref: "EC2S3IAMRole"
+
   #DB Subnet Group
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -254,7 +318,7 @@ Resources:
     Type: 'AWS::EC2::SecurityGroup'
     DependsOn: VPC
     Properties:
-      GroupName: 'application'
+      GroupName: !Ref InstanceSecurityGroupName
       GroupDescription: Enables TCP traffic on ports 22, 80, 443 and 8080
       VpcId: !Ref VPC
       SecurityGroupIngress:
@@ -277,7 +341,7 @@ Resources:
       Tags:                                      
       -                                        
         Key: Name
-        Value: application 
+        Value: !Ref InstanceSecurityGroupName
 
   #Creates the EC2 Security Group for the RDS Instance
   RDSInstanceSecurityGroup: 
@@ -294,7 +358,7 @@ Resources:
       Tags:                                      
       -                                        
         Key: Name
-        Value: database
+        Value: !Ref RDSInstanceSecurityGroupName
 
   #Creates the first subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the first availability zone in the same region
   PublicSubnet1:
