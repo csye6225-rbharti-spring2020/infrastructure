@@ -203,7 +203,7 @@ Resources:
             - |
               sudo echo export DBCreationType >> /etc/profile.d/envvariable.sh
             - |
-              sudo echo appProfile=AWS >> /etc/profile.d/envvariable.sh 
+              sudo echo appProfile=aws >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export appProfile >> /etc/profile.d/envvariable.sh
             - |
@@ -483,3 +483,14 @@ Outputs:
   PublicSubnet2:
     Description: Third public subnet in the 3rd Availability Zone
     Value: !Ref PublicSubnet3
+
+  #S3 Bucket Secure URL
+  S3BucketSecureURL:
+    Description: Name of S3 bucket to hold website content
+    Value: !Join ['', ['https://', !GetAtt [S3Bucket, DomainName]]]
+
+  #RDS DB Instance JDBC Connection String
+  RDSJDBCConnectionString:
+    Description: JDBC connection string for the RDS database
+    Value: !Join ['', ['jdbc:mysql://', !GetAtt [DBinstance, Endpoint.Address], ':',
+        !GetAtt [DBinstance, Endpoint.Port], /, !Ref 'DBName']]
