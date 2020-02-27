@@ -1,0 +1,504 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Application Stack Template. 
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+
+  VpcCIDR:
+    Description: IP range (CIDR notation) for this VPC
+    Type: String
+
+  PublicSubnet1CIDR:
+    Description: IP range (CIDR notation) for the first public subnet in the first Availability Zone
+    Type: String
+
+  PublicSubnet2CIDR:
+    Description: IP range (CIDR notation) for the second public subnet in the second Availability Zone
+    Type: String
+
+  PublicSubnet3CIDR:
+    Description: IP range (CIDR notation) for the third public subnet in the third Availability Zone
+    Type: String
+
+  awsRegion:
+    Description: Region for the infrastructure, used for selecting Availability zones
+    Type: String
+    Default: us-east-1
+
+  InstanceTypeParameter: 
+    Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro.
+    Type: String
+    AllowedValues: 
+      - t2.micro
+      - m1.small
+      - m1.large
+  
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to SSH into the instance
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must provide an existing EC2 KeyPair.
+  
+  Ec2InstanceSize:
+    Description: Size of the EC2 Instance Size
+    Type: Number
+
+  Ec2InstanceName:
+    Description: Name of the EC2 instance
+    Type: String
+
+  DBEngine:
+    Description: Name of the DBEgine
+    Type: String
+
+  DBInstanceClass:
+    Description: DB instance class
+    Type: String
+    ConstraintDescription: Must select a valid DB instance type.
+
+  DBInstanceID:
+    Description: My database instance
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+
+  DBPassword:
+    NoEcho: 'true'
+    Description: Password MySQL database access
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.
+
+  DBAllocatedStorage:
+    Description: The size of the database (GiB)
+    Type: Number
+    MinValue: '5'
+    MaxValue: '1024'
+    ConstraintDescription: must be between 20 and 65536 GiB.
+
+  DBName:
+    Description: My database
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters. 
+
+  MultiAZ:
+    Description: Specifies if the database instance is a multiple Availability Zone deployment.
+    Type: String
+    AllowedValues: [true, false]
+    Default: true
+    ConstraintDescription: "Value must be boolean value." 
+
+  DBPublicAccessibility:
+    Description: Specifies if the DB instance is publically available.
+    Type: String
+    AllowedValues: [true, false]
+    Default: false
+    ConstraintDescription: "Value must be boolean value." 
+
+  AMIID:
+    Description: AMI-ID for the EC2 Instance.
+    Type: String
+    Default: ami-0e45550c321406f56
+
+  VpcName:
+    Description: VPC Name.
+    Type: String
+
+  EC2RoleName:
+    Description: EC2 Role Name.
+    Type: String
+    Default: EC2-CSYE6225
+
+  EC2RolePolicyName:
+    Description: EC2 Role Policy Name.
+    Type: String
+    Default: WebAppS3
+
+  InstanceSecurityGroupName:
+    Description: EC2 Security Group Name.
+    Type: String
+    Default: application
+
+  RDSInstanceSecurityGroupName:
+    Description: RDS Security Group Name.
+    Type: String
+    Default: database
+
+  Ec2VolumeType:
+    Description: EC2 Volume Type.
+    Type: String
+    Default: gp2
+
+Resources:
+  #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref VpcName
+
+  #Creates the S3 Bucket
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToStandardIAAfter30Days
+            Status: 'Enabled'
+            Transition:
+              TransitionInDays: 30
+              StorageClass: 'STANDARD_IA'
+
+  #Creates the EC2 instance and sets its configuration 
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: [DBinstance, InternetGatewayAttachment]                     
+    Properties:
+      ImageId: !Ref AMIID
+      InstanceType:
+        Ref: InstanceTypeParameter
+      KeyName: !Ref KeyName
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref Ec2InstanceSize
+            VolumeType: !Ref Ec2VolumeType
+            DeleteOnTermination: true
+      IamInstanceProfile: !Ref EC2S3InstanceProfile
+      NetworkInterfaces: 
+      - AssociatePublicIpAddress: true
+        DeviceIndex: "0"
+        GroupSet: 
+          - !Ref InstanceSecurityGroup
+        SubnetId: 
+          Ref: "PublicSubnet2"
+      UserData: !Base64 
+        'Fn::Join':
+          - ''
+          - - |
+              #!/bin/bash 
+            - |
+              set -e -x 
+            - |
+              sudo echo DBCreationType=update >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export DBCreationType >> /etc/profile.d/envvariable.sh
+            - |
+              sudo echo appProfile=aws >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export appProfile >> /etc/profile.d/envvariable.sh
+            - |
+              sudo echo DBDialect=org.hibernate.dialect.MySQL5Dialect >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export DBDialect >> /etc/profile.d/envvariable.sh  
+            - !Sub |
+              sudo echo username=${DBUsername} >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export username >> /etc/profile.d/envvariable.sh 
+            - !Sub >
+              sudo echo password=${DBPassword} >>
+              /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export password >> /etc/profile.d/envvariable.sh 
+            - !Join 
+              - ''
+              - - 'echo myRDS=jdbc:mysql://'
+                - !GetAtt 
+                  - DBinstance
+                  - Endpoint.Address
+                - !Sub |
+                  :3306/${DBName} >> /etc/profile.d/envvariable.sh 
+            - !Join 
+              - ''
+              - - sudo echo bucketName=
+                - !Ref S3Bucket
+                - |
+                  >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export myRDS >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export bucketName >> /etc/profile.d/envvariable.sh
+      Tags:                                      
+        -                                        
+          Key: Name
+          Value: !Ref Ec2InstanceName   
+
+  #Creates the RDS DB instance and sets its configuration 
+  DBinstance: 
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      DBInstanceIdentifier: !Ref DBInstanceID
+      DBName: !Ref DBName
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: !Ref DBAllocatedStorage
+      Engine: !Ref DBEngine
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      MultiAZ: !Ref MultiAZ
+      VPCSecurityGroups: [!Ref RDSInstanceSecurityGroup]
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: !Ref DBPublicAccessibility
+
+  #Creates the EC2 IAM Role
+  EC2S3IAMRole: 
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref EC2RoleName
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+
+  #Creates the EC2 IAM Role's Policy
+  EC2S3RolePolicies: 
+    Type: "AWS::IAM::Policy"
+    DependsOn: S3Bucket
+    Properties: 
+      PolicyName: !Ref EC2RolePolicyName
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: 'Allow'
+            Action: ["s3:GetObject", "s3:DeleteObject", "s3:PutObject"]
+            Resource: 
+              - !Join ['', ['arn:aws:s3:::', !Ref S3Bucket ]]
+              - !Join ['', ['arn:aws:s3:::', !Ref S3Bucket, '/*' ]]
+      Roles: 
+        - 
+          Ref: "EC2S3IAMRole"
+  
+  #Creates the instance profile for EC2 IAM Role
+  EC2S3InstanceProfile: 
+    Type: "AWS::IAM::InstanceProfile"
+    Properties: 
+      Path: "/"
+      Roles: 
+        - 
+          Ref: "EC2S3IAMRole"
+
+  #DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet Group for DB
+      SubnetIds:
+      - Ref: PublicSubnet1
+      - Ref: PublicSubnet2
+      - Ref: PublicSubnet3
+      Tags:
+      - Key: Name
+        Value: !Sub ${EnvironmentName} DBSubnetGroup
+
+  #Creates the EC2 Security Group for the EC2 instance
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn: VPC
+    Properties:
+      GroupName: !Ref InstanceSecurityGroupName
+      GroupDescription: Enables TCP traffic on ports 22, 80, 443 and 8080
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: 0.0.0.0/0
+      Tags:                                      
+      -                                        
+        Key: Name
+        Value: !Ref InstanceSecurityGroupName
+
+  #Creates the EC2 Security Group for the RDS Instance
+  RDSInstanceSecurityGroup: 
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn: InstanceSecurityGroup
+    Properties:
+      GroupDescription: Enables TCP traffic on port 3306 for MySQL
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        SourceSecurityGroupId: !GetAtt InstanceSecurityGroup.GroupId
+      Tags:                                      
+      -                                        
+        Key: Name
+        Value: !Ref RDSInstanceSecurityGroupName
+
+  #Creates the first subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the first availability zone in the same region
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 0
+        - Fn::GetAZs: !Ref awsRegion
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+
+  #Creates the second subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the second availability zone in the same region
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 1
+        - Fn::GetAZs: !Ref awsRegion
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+
+  #Creates the third subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the third availability zone in the same region
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 2
+        - Fn::GetAZs: !Ref awsRegion
+      CidrBlock: !Ref PublicSubnet3CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value: !Sub ${EnvironmentName} Public Subnet (AZ3)
+
+  #Creates an Internet Gateway for myVpc
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn: VPC
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Ref EnvironmentName
+
+  #Attaches the Internet Gateway created above to myVpc
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    DependsOn: VPC
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  
+  #Route Table for the Vpc
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Routes
+
+  #Default Route Entry directing all the traffic to the Internet Gateway created above
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  #Associating Subnet 1 to the Route Table
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  #Associating Subnet 2 to the Route Table
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  #Associating Subnet 3 to the Route Table
+  PublicSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet3
+
+#Contains all the values available via this Stack
+Outputs:
+  #VPC 
+  VPC:
+    Description: A reference to the created VPC
+    Value: !Ref VPC
+
+  #An array of all the Public Subnets created
+  PublicSubnets:
+    Description: A list of the public subnets
+    Value: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2, !Ref PublicSubnet3 ]]
+
+  #Public Subnet 1
+  PublicSubnet1:
+    Description: First public subnet in the 1st Availability Zone
+    Value: !Ref PublicSubnet1
+
+  #Public Subnet 2
+  PublicSubnet2:
+    Description: Second public subnet in the 2nd Availability Zone
+    Value: !Ref PublicSubnet2
+
+  #Public Subnet 3
+  PublicSubnet2:
+    Description: Third public subnet in the 3rd Availability Zone
+    Value: !Ref PublicSubnet3
+
+  #S3 Bucket Secure URL
+  S3BucketSecureURL:
+    Description: Name of S3 bucket to hold website content
+    Value: !Join ['', ['https://', !GetAtt [S3Bucket, DomainName]]]
+
+  #RDS DB Instance JDBC Connection String
+  RDSJDBCConnectionString:
+    Description: JDBC connection string for the RDS database
+    Value: !Join ['', ['jdbc:mysql://', !GetAtt [DBinstance, Endpoint.Address], ':',
+        !GetAtt [DBinstance, Endpoint.Port], /, !Ref 'DBName']]

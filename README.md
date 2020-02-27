@@ -1,33 +1,41 @@
 # Infrastructure 
 
-This Repo contains YAML CloudFormation Configuration. It creates a custom VPC, 3 Public Subnets in different availability zones in the same region, attached to the VPC. Further, an Internet Gateway is attached to the VPC and
-respective Route Table is created and attached as well.
-
-The following parameters are supposed to be supplied while creating the Networking Stack else it wouldn't work:
-
-```
-Environment Name
-AWS region
-VPC's CIDR block
-Subnet's CIDR blocks (For all the three Subnets)
-```
+This Repo contains YAML CloudFormation Configuration. 
 
 ## Command with Sample Values to create the Networking Stack in dev account:
 
+The following parameters are supposed to be supplied while creating the Networking Stack else it wouldn't work!
+
 ```
 aws --profile dev cloudformation create-stack \
-  --stack-name networkingStack \
-  --parameters ParameterKey=EnvironmentName,ParameterValue=myVPC \
-    ParameterKey=VpcCIDR,ParameterValue=10.25.0.0/16 \
-    ParameterKey=PublicSubnet1CIDR,ParameterValue=10.25.10.0/24 \
-    ParameterKey=PublicSubnet2CIDR,ParameterValue=10.25.11.0/24 \
-    ParameterKey=PublicSubnet3CIDR,ParameterValue=10.25.12.0/24 \
-    ParameterKey=vpcRegion,ParameterValue=us-east-1 \
-  --template-body file://networking.yaml
+  --stack-name applicationStack \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters ParameterKey=EnvironmentName,ParameterValue=$EnvironmentName \
+    ParameterKey=VpcCIDR,ParameterValue=$VpcCIDR \
+    ParameterKey=PublicSubnet1CIDR,ParameterValue=$PublicSubnet1CIDR \
+    ParameterKey=PublicSubnet2CIDR,ParameterValue=$PublicSubnet2CIDR \
+    ParameterKey=PublicSubnet3CIDR,ParameterValue=$PublicSubnet3CIDR \
+    ParameterKey=awsRegion,ParameterValue=$awsRegion \
+    ParameterKey=InstanceTypeParameter,ParameterValue=$InstanceTypeParameter \
+    ParameterKey=KeyName,ParameterValue=$KeyName \
+    ParameterKey=Ec2InstanceSize,ParameterValue=$Ec2InstanceSize \
+    ParameterKey=Ec2InstanceName,ParameterValue=$Ec2InstanceName \
+    ParameterKey=DBEngine,ParameterValue=$DBEngine \
+    ParameterKey=DBInstanceClass,ParameterValue=$DBInstanceClass \
+    ParameterKey=DBInstanceID,ParameterValue=$DBInstanceID \
+    ParameterKey=DBUsername,ParameterValue=$DBUsername \
+    ParameterKey=DBPassword,ParameterValue=$DBPassword\
+    ParameterKey=DBAllocatedStorage,ParameterValue=$DBAllocatedStorage \
+    ParameterKey=DBName,ParameterValue=$DBName \
+    ParameterKey=MultiAZ,ParameterValue=$MultiAZ \
+    ParameterKey=DBPublicAccessibility,ParameterValue=$DBPublicAccessibility \
+    ParameterKey=AMIID,ParameterValue=$AMIID \
+    ParameterKey=VpcName,ParameterValue=$VpcName \
+  --template-body file://application.yaml
 ```
 
 ## Command to delete the Networking Stack:
 
 ```
-    aws --profile dev cloudformation delete-stack --stack-name networkingStack
+    aws --profile dev cloudformation delete-stack --stack-name applicationStack
 ```
