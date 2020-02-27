@@ -441,21 +441,21 @@ Resources:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
   
-  #Public Route Table for the Vpc
-  PublicRouteTable:
+  #Route Table for the Vpc
+  RouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub ${EnvironmentName} Public Routes
+          Value: !Sub ${EnvironmentName} Routes
 
   #Default Route Entry directing all the traffic to the Internet Gateway created above
   DefaultPublicRoute:
     Type: AWS::EC2::Route
     DependsOn: InternetGatewayAttachment
     Properties:
-      RouteTableId: !Ref PublicRouteTable
+      RouteTableId: !Ref RouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
@@ -463,22 +463,29 @@ Resources:
   PublicSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref PublicRouteTable
+      RouteTableId: !Ref RouteTable
       SubnetId: !Ref PublicSubnet1
 
   #Associating Subnet 2 to the Route Table
   PublicSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref PublicRouteTable
+      RouteTableId: !Ref RouteTable
       SubnetId: !Ref PublicSubnet2
 
   #Associating Subnet 3 to the Route Table
   PublicSubnet3RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref PublicRouteTable
+      RouteTableId: !Ref RouteTable
       SubnetId: !Ref PublicSubnet3
+
+  #Associating Private Subnet to the Route Table
+  PrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PrivateSubnet
 
 #Contains all the values available via this Stack
 Outputs:
