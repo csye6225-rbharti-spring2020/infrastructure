@@ -182,6 +182,14 @@ Parameters:
     Description: Code Deploy Compute Platform.
     Type: String
 
+  CodeDeployServiceRoleName:
+    Description: Code Deploy Service Role Name.
+    Type: String
+
+  CodeDeployDeploymentGroupName:
+    Description: CodeDeploy Deployment Group Name
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -292,6 +300,28 @@ Resources:
       ApplicationName: !Ref CodeDeployApplicationName
       ComputePlatform: !Ref CodeDeployComputePlatform
 
+  #Creates the CodeDeploy Deployment Group
+  CodeDeployDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    DependsOn: CodeDeployApplication
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: !Ref CodeDeployDeploymentGroupName
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      DeploymentStyle:
+        DeploymentOption: WITHOUT_TRAFFIC_CONTROL
+        DeploymentType: IN_PLACE
+      Ec2TagFilters: 
+      - 
+        Key: "Name"
+        Value: !Ref Ec2InstanceName
+        Type: "KEY_AND_VALUE"
+      DeploymentConfigName: CodeDeployDefault.AllAtOnce
+      AutoRollbackConfiguration:
+        Enabled: true
+        Events: 
+          - DEPLOYMENT_FAILURE
+      
   #Creates the RDS DB instance and sets its configuration 
   DBinstance: 
     Type: 'AWS::RDS::DBInstance'
@@ -308,6 +338,23 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: !Ref DBPublicAccessibility
 
+  #IAM Role for CodeDeploy to call AWS Services
+  CodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref CodeDeployServiceRoleName
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - !Ref AwsCodeDeployPolicyARN
+
   #Creates the EC2 IAM Role
   EC2S3IAMRole: 
     Type: AWS::IAM::Role
@@ -322,8 +369,6 @@ Resources:
           Action:
           - sts:AssumeRole
       Path: "/"
-      ManagedPolicyArns:
-        - !Ref AwsCodeDeployPolicyARN
 
   #Creates the EC2 IAM Role's Policy to talk to S3 for Image Upload
   EC2S3RolePolicy: 
