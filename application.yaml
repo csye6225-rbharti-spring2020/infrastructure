@@ -145,6 +145,43 @@ Parameters:
     Type: String
     Default: gp2
 
+  EC2S3CodeDeployPolicyName:
+    Description: EC2 S3 Bucket CodeDeploy Policy.
+    Type: String
+    Default: CodeDeploy-EC2-S3
+
+  AwsCodeDeployPolicyARN:
+    Description: AWS CodeDeploy Policy ARN.
+    Type: String
+    Default: arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+
+  CircleCIUploadToS3PolicyName:
+    Description: CircleCI Policy to upload the webapp build to the s3 bucket.
+    Type: String
+    Default: CircleCI-Upload-To-S3
+
+  CircleCiIAMUserName:
+    Description: CircleCI IAM User's name.
+    Type: String
+    Default: circleci
+    
+  CircleCICodeDeployPolicyName:
+    Description: CircleCI CodeDeploy Policy Name.
+    Type: String
+    Default: CircleCI-Code-Deploy
+  
+  AWSAccountID:
+    Description: AWS Account ID.
+    Type: String
+
+  CodeDeployApplicationName:
+    Description: Code Deploy Application Name.
+    Type: String
+
+  CodeDeployComputePlatform:
+    Description: Code Deploy Compute Platform.
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -246,7 +283,14 @@ Resources:
       Tags:                                      
         -                                        
           Key: Name
-          Value: !Ref Ec2InstanceName   
+          Value: !Ref Ec2InstanceName 
+
+  #Creates the CodeDeploy Application        
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Ref CodeDeployApplicationName
+      ComputePlatform: !Ref CodeDeployComputePlatform
 
   #Creates the RDS DB instance and sets its configuration 
   DBinstance: 
@@ -278,9 +322,11 @@ Resources:
           Action:
           - sts:AssumeRole
       Path: "/"
+      ManagedPolicyArns:
+        - !Ref AwsCodeDeployPolicyARN
 
-  #Creates the EC2 IAM Role's Policy
-  EC2S3RolePolicies: 
+  #Creates the EC2 IAM Role's Policy to talk to S3 for Image Upload
+  EC2S3RolePolicy: 
     Type: "AWS::IAM::Policy"
     DependsOn: S3Bucket
     Properties: 
@@ -297,7 +343,24 @@ Resources:
       Roles: 
         - 
           Ref: "EC2S3IAMRole"
-  
+
+  #IAM Policy for EC2 instance to read latest application revision from the S3 Bucket
+  CodeDeployEC2S3IAMRolePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: !Ref EC2S3CodeDeployPolicyName
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: 'Allow'
+            Action: ["s3:Get*", "s3:List*"]
+            Resource: 
+              - ""
+      Roles: 
+        - 
+          Ref: "EC2S3IAMRole"
+
   #Creates the instance profile for EC2 IAM Role
   EC2S3InstanceProfile: 
     Type: "AWS::IAM::InstanceProfile"
@@ -306,6 +369,48 @@ Resources:
       Roles: 
         - 
           Ref: "EC2S3IAMRole"
+
+  #IAM Policy for CircleCI IAM user to deploy the webapp on the S3 Bucket
+  CircleCIUploadToS3Policy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: !Ref CircleCIUploadToS3PolicyName
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: 'Allow'
+            Action: ["s3:PutObject", "s3:Get*", "s3:List*"]
+            Resource: 
+              - ""
+      Users: [ !Ref CircleCiIAMUserName ]
+
+  #IAM Policy for CircleCI IAM user to call CodeDeploy APIs to initiate application deployment on EC2 instances
+  CircleCICodeDeployPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: !Ref CircleCICodeDeployPolicyName
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: 'Allow'
+            Action: ["codedeploy:RegisterApplicationRevision", "codedeploy:GetApplicationRevision"]
+            Resource: 
+              - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':application:', !Ref CodeDeployApplicationName]]
+          -
+            Effect: 'Allow'
+            Action: ["codedeploy:CreateDeployment", "codedeploy:GetDeployment"]
+            Resource: 
+              - "*"
+          -
+            Effect: 'Allow'
+            Action: ["codedeploy:GetDeploymentConfig"]
+            Resource: 
+              - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':deploymentconfig:CodeDeployDefault.OneAtATime']]
+              - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':deploymentconfig:CodeDeployDefault.HalfAtATime']]
+              - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':deploymentconfig:CodeDeployDefault.AllAtOnce']]
+      Users: [ !Ref CircleCiIAMUserName ]
 
   #DB Subnet Group
   DBSubnetGroup:
