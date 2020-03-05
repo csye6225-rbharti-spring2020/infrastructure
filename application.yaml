@@ -288,6 +288,12 @@ Resources:
               sudo echo export myRDS >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export bucketName >> /etc/profile.d/envvariable.sh
+            - |
+              cd ~
+            - |
+              mkdir myApp
+            - |
+              ls -al
       Tags:                                      
         -                                        
           Key: Name
