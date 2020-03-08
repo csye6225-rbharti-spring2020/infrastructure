@@ -350,15 +350,12 @@ Resources:
       RoleName: !Ref CodeDeployServiceRoleName
       AssumeRolePolicyDocument:
         Statement:
-        - Effect: Allow
-          Principal:
-            Service:
-            - ec2.amazonaws.com
-          Action:
-          - sts:AssumeRole
+        - Effect: "Allow"
+            Principal:
+              Service: "codedeploy.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
       Path: "/"
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
 
   #Creates the EC2 IAM Role
   EC2S3IAMRole: 
