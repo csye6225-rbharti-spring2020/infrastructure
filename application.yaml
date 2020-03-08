@@ -190,6 +190,10 @@ Parameters:
     Description: CodeDeploy Deployment Group Name
     Type: String
 
+  WebAppDeployS3Bucket:
+    Description: Name of the S3 Bucket where the webapp's jar is uploaded
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -407,7 +411,8 @@ Resources:
             Effect: 'Allow'
             Action: ["s3:Get*", "s3:List*"]
             Resource: 
-              - ""
+              - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket ]]
+              - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket, '/*' ]]
       Roles: 
         - 
           Ref: "EC2S3IAMRole"
@@ -433,7 +438,8 @@ Resources:
             Effect: 'Allow'
             Action: ["s3:PutObject", "s3:Get*", "s3:List*"]
             Resource: 
-              - ""
+              - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket ]]
+              - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket, '/*' ]]
       Users: [ !Ref CircleCiIAMUserName ]
 
   #IAM Policy for CircleCI IAM user to call CodeDeploy APIs to initiate application deployment on EC2 instances
@@ -453,7 +459,8 @@ Resources:
             Effect: 'Allow'
             Action: ["codedeploy:CreateDeployment", "codedeploy:GetDeployment"]
             Resource: 
-              - "*"
+              - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket ]]
+              - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket, '/*' ]]
           -
             Effect: 'Allow'
             Action: ["codedeploy:GetDeploymentConfig"]
