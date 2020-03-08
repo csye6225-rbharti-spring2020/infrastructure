@@ -150,11 +150,6 @@ Parameters:
     Type: String
     Default: CodeDeploy-EC2-S3
 
-  AwsCodeDeployPolicyARN:
-    Description: AWS CodeDeploy Policy ARN.
-    Type: String
-    Default: arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
-
   CircleCIUploadToS3PolicyName:
     Description: CircleCI Policy to upload the webapp build to the s3 bucket.
     Type: String
@@ -363,7 +358,7 @@ Resources:
           - sts:AssumeRole
       Path: "/"
       ManagedPolicyArns:
-        - !Ref AwsCodeDeployPolicyARN
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
 
   #Creates the EC2 IAM Role
   EC2S3IAMRole: 
