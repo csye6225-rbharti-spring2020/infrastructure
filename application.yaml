@@ -453,8 +453,7 @@ Resources:
             Effect: 'Allow'
             Action: ["codedeploy:CreateDeployment", "codedeploy:GetDeployment"]
             Resource: 
-              - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket ]]
-              - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket, '/*' ]]
+              - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':deploymentgroup:', !Ref CodeDeployApplicationName, '/', !Ref CodeDeployDeploymentGroupName ]]
           -
             Effect: 'Allow'
             Action: ["codedeploy:GetDeploymentConfig"]
