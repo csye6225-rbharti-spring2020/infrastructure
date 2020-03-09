@@ -308,11 +308,11 @@ Resources:
   #Creates the CodeDeploy Deployment Group
   CodeDeployDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
-    DependsOn: CodeDeployApplication
+    DependsOn: CodeDeployServiceIAMRole
     Properties:
       ApplicationName: !Ref CodeDeployApplication
       DeploymentGroupName: !Ref CodeDeployDeploymentGroupName
-      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      ServiceRoleArn: !GetAtt CodeDeployServiceIAMRole.Arn
       DeploymentStyle:
         DeploymentOption: WITHOUT_TRAFFIC_CONTROL
         DeploymentType: IN_PLACE
@@ -344,18 +344,20 @@ Resources:
       PubliclyAccessible: !Ref DBPublicAccessibility
 
   #IAM Role for CodeDeploy to call AWS Services
-  CodeDeployServiceRole:
+  CodeDeployServiceIAMRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Ref CodeDeployServiceRoleName
       AssumeRolePolicyDocument:
         Statement:
         - Effect: "Allow"
-            Principal:
-              Service: "codedeploy.amazonaws.com"
-            Action:
-              - "sts:AssumeRole"
+          Principal:
+            Service: "codedeploy.amazonaws.com"
+          Action:
+            - "sts:AssumeRole"
       Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
 
   #Creates the EC2 IAM Role
   EC2S3IAMRole: 
