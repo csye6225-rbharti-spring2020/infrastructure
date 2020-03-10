@@ -407,6 +407,10 @@ Resources:
             Resource: 
               - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket ]]
               - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket, '/*' ]]
+              - arn:aws:s3:::aws-codedeploy-us-east-2/*
+              - arn:aws:s3:::aws-codedeploy-us-east-1/*
+              - arn:aws:s3:::aws-codedeploy-us-west-1/*
+              - arn:aws:s3:::aws-codedeploy-us-west-2/*
       Roles: 
         - 
           Ref: "EC2S3IAMRole"
@@ -451,7 +455,7 @@ Resources:
               - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':application:', !Ref CodeDeployApplicationName]]
           -
             Effect: 'Allow'
-            Action: ["codedeploy:CreateDeployment", "codedeploy:GetDeployment"]
+            Action: ["codedeploy:CreateDeployment", "codedeploy:GetDeployment", "codedeploy:ListDeployments"]
             Resource: 
               - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':deploymentgroup:', !Ref CodeDeployApplicationName, '/', !Ref CodeDeployDeploymentGroupName ]]
           -
