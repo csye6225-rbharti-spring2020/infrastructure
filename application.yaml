@@ -369,7 +369,8 @@ Resources:
         - Effect: Allow
           Principal:
             Service:
-            - ec2.amazonaws.com
+              - ec2.amazonaws.com
+              - codedeploy.amazonaws.com
           Action:
           - sts:AssumeRole
       Path: "/"
@@ -403,7 +404,7 @@ Resources:
         Statement: 
           - 
             Effect: 'Allow'
-            Action: ["s3:Get*", "s3:List*"]
+            Action: ["s3:GetObject", "s3:ListObject"]
             Resource: 
               - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket ]]
               - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket, '/*' ]]
@@ -434,7 +435,7 @@ Resources:
         Statement: 
           - 
             Effect: 'Allow'
-            Action: ["s3:PutObject", "s3:Get*", "s3:List*"]
+            Action: ["s3:PutObject", "s3:GetObject", "s3:ListObject"]
             Resource: 
               - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket ]]
               - !Join ['', ['arn:aws:s3:::', !Ref WebAppDeployS3Bucket, '/*' ]]
