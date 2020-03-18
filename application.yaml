@@ -257,18 +257,22 @@ Resources:
             - |
               sudo echo export appProfile >> /etc/profile.d/envvariable.sh
             - |
+              sudo echo driverClassName=com.mysql.cj.jdbc.Driver >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export driverClassName >> /etc/profile.d/envvariable.sh
+            - |
               sudo echo DBDialect=org.hibernate.dialect.MySQL5Dialect >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export DBDialect >> /etc/profile.d/envvariable.sh  
             - !Sub |
-              sudo echo username=${DBUsername} >> /etc/profile.d/envvariable.sh 
+              sudo echo userName=${DBUsername} >> /etc/profile.d/envvariable.sh 
             - |
-              sudo echo export username >> /etc/profile.d/envvariable.sh 
+              sudo echo export userName >> /etc/profile.d/envvariable.sh 
             - !Sub >
-              sudo echo password=${DBPassword} >>
+              sudo echo pass=${DBPassword} >>
               /etc/profile.d/envvariable.sh 
             - |
-              sudo echo export password >> /etc/profile.d/envvariable.sh 
+              sudo echo export pass >> /etc/profile.d/envvariable.sh 
             - !Join 
               - ''
               - - 'echo myRDS=jdbc:mysql://'
@@ -374,6 +378,8 @@ Resources:
           Action:
           - sts:AssumeRole
       Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
 
   #Creates the EC2 IAM Role's Policy to talk to S3 for Image Upload
   EC2S3RolePolicy: 
