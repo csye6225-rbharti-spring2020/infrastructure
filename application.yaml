@@ -45,8 +45,8 @@ Parameters:
     Description: Size of the EC2 Instance Size
     Type: Number
 
-  Ec2InstanceName:
-    Description: Name of the EC2 instance
+  LaunchConfigurationName:
+    Description: Name of the EC2 instance Launch Configuration
     Type: String
 
   DBEngine:
@@ -189,6 +189,10 @@ Parameters:
     Description: Name of the S3 Bucket where the webapp's jar is uploaded
     Type: String
 
+  LoadBalancerName:
+    Description: Name of the Load Balancer
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -218,29 +222,22 @@ Resources:
               TransitionInDays: 30
               StorageClass: 'STANDARD_IA'
 
-  #Creates the EC2 instance and sets its configuration 
-  EC2Instance:
-    Type: AWS::EC2::Instance
-    DependsOn: [DBinstance, InternetGatewayAttachment]                     
-    Properties:
-      ImageId: !Ref AMIID
-      InstanceType:
-        Ref: InstanceTypeParameter
+  #Creates the Launch configuration for the autoscaling group
+  MyLaunchConfig: 
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties: 
       KeyName: !Ref KeyName
+      ImageId: !Ref AMIID
+      AssociatePublicIpAddress: true
+      InstanceType: !Ref InstanceTypeParameter
+      IamInstanceProfile: !Ref EC2S3InstanceProfile
       BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
             VolumeSize: !Ref Ec2InstanceSize
             VolumeType: !Ref Ec2VolumeType
             DeleteOnTermination: true
-      IamInstanceProfile: !Ref EC2S3InstanceProfile
-      NetworkInterfaces: 
-      - AssociatePublicIpAddress: true
-        DeviceIndex: "0"
-        GroupSet: 
-          - !Ref InstanceSecurityGroup
-        SubnetId: 
-          Ref: "PublicSubnet2"
+      SecurityGroups: !Ref InstanceSecurityGroup
       UserData: !Base64 
         'Fn::Join':
           - ''
@@ -291,11 +288,110 @@ Resources:
               sudo echo export myRDS >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export bucketName >> /etc/profile.d/envvariable.sh
+            - |
+              sudo systemctl start amazon-cloudwatch-agent.service  
       Tags:                                      
         -                                        
           Key: Name
-          Value: !Ref Ec2InstanceName 
+          Value: !Ref LaunchConfigurationName 
 
+  #Creates the AutoScalingGroup, attaches the Launch configuration, sets the Subnets,  
+  MyASG: 
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn: MyLaunchConfig
+    Properties: 
+      LaunchConfigurationName: !Ref LaunchConfigurationName 
+      Cooldown: "60"
+      MinSize: "2"
+      MaxSize: "10"
+      DesiredCapacity: "2"
+      VPCZoneIdentifier: 
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+      Tags:
+        -                                        
+          Key: Name
+          Value: !Ref AutoScalingGroupName
+          PropagateAtLaunch: true
+
+  #Application Load Balancer
+  MyAppLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Properties: 
+        IpAddressType: dualstack
+        LoadBalancerAttributes: 
+          - LoadBalancerAttribute
+        Name: String
+        Scheme: String
+        SecurityGroups: 
+          - String
+        SubnetMappings: 
+          - SubnetMapping
+        Subnets: 
+          - String
+        Tags: 
+          - Tag
+        Type: String
+
+  #Web Server Scale Up Policy
+  WebServerScaleUpPolicy: 
+    Type: "AWS::AutoScaling::ScalingPolicy"
+    Properties: 
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref MyASG
+      Cooldown: 60
+      ScalingAdjustment: 1
+
+  #Web Server Scale Down Policy
+  WebServerScaleDownPolicy: 
+    Type: "AWS::AutoScaling::ScalingPolicy"
+    Properties: 
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref MyASG
+      Cooldown: 60
+      ScalingAdjustment: "-1"
+
+  #CPU Alarm High 
+  CPUAlarmHigh: 
+    Type: "AWS::CloudWatch::Alarm"
+    Properties: 
+      AlarmDescription: "Scale-up if CPU > 5% for 3 minutes"
+      MetricName: CPUUtilization
+      Namespace: "AWS/EC2"
+      Statistic: Average
+      Period: 180
+      EvaluationPeriods: 1
+      Threshold: 5
+      AlarmActions: 
+        - 
+          Ref: WebServerScaleUpPolicy
+      Dimensions: 
+        - 
+          Name: AutoScalingGroupName
+          Value: !Ref MyASG
+      ComparisonOperator: GreaterThanThreshold
+
+  #CPU Alarm Low
+  CPUAlarmLow: 
+    Type: "AWS::CloudWatch::Alarm"
+    Properties: 
+      AlarmDescription: "Scale-down if CPU < 3% for 3 minutes"
+      MetricName: CPUUtilization
+      Namespace: "AWS/EC2"
+      Statistic: Average
+      Period: 180
+      EvaluationPeriods: 1
+      Threshold: 3
+      AlarmActions: 
+        - 
+          Ref: WebServerScaleDownPolicy
+      Dimensions: 
+        - 
+          Name: AutoScalingGroupName
+          Value: !Ref MyASG
+      ComparisonOperator: LessThanThreshold
+  
   #Creates the CodeDeploy Application        
   CodeDeployApplication:
     Type: AWS::CodeDeploy::Application
