@@ -458,12 +458,11 @@ Resources:
       DeploymentStyle:
         DeploymentOption: WITHOUT_TRAFFIC_CONTROL
         DeploymentType: IN_PLACE
-      Ec2TagFilters: 
-      - 
-        Key: "Name"
-        Value: !Ref Ec2InstanceName
-        Type: "KEY_AND_VALUE"
-      DeploymentConfigName: CodeDeployDefault.AllAtOnce
+      DeploymentStyle:
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+      LoadBalancerInfo:
+        TargetGroupInfoList:
+          - Name: !GetAtt LoadBalancerTargetGroup.TargetGroupName
       AutoRollbackConfiguration:
         Enabled: true
         Events: 
@@ -655,7 +654,7 @@ Resources:
       - IpProtocol: tcp
         FromPort: 80
         ToPort: 80
-        CidrIp: 0.0.0.0/0
+        SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
       - IpProtocol: tcp
         FromPort: 443
         ToPort: 443
