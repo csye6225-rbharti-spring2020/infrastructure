@@ -470,10 +470,9 @@ Resources:
       DeploymentGroupName: !Ref CodeDeployDeploymentGroupName
       ServiceRoleArn: !GetAtt CodeDeployServiceIAMRole.Arn
       DeploymentStyle:
-        DeploymentOption: WITHOUT_TRAFFIC_CONTROL
-        DeploymentType: IN_PLACE
-      DeploymentStyle:
         DeploymentOption: WITH_TRAFFIC_CONTROL
+        DeploymentType: IN_PLACE
+      AutoScalingGroups: !Ref MyASG
       LoadBalancerInfo:
         TargetGroupInfoList:
           - Name: !GetAtt LoadBalancerTargetGroup.TargetGroupName
