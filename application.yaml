@@ -249,7 +249,9 @@ Resources:
             VolumeSize: !Ref Ec2InstanceSize
             VolumeType: !Ref Ec2VolumeType
             DeleteOnTermination: true
-      SecurityGroups: !Ref InstanceSecurityGroup
+      SecurityGroups: 
+        - !Ref InstanceSecurityGroup
+      LaunchConfigurationName: !Ref LaunchConfigurationName
       UserData: !Base64 
         'Fn::Join':
           - ''
@@ -302,10 +304,6 @@ Resources:
               sudo echo export bucketName >> /etc/profile.d/envvariable.sh
             - |
               sudo systemctl start amazon-cloudwatch-agent.service  
-      Tags:                                      
-        -                                        
-          Key: Name
-          Value: !Ref LaunchConfigurationName 
 
   #Resource Record Set to map the Load Balancer to a CNAME
   MyDomain: 
@@ -322,7 +320,7 @@ Resources:
   #Creates the AutoScalingGroup, attaches the Launch configuration, sets the Subnets,  
   MyASG: 
     Type: AWS::AutoScaling::AutoScalingGroup
-    DependsOn: [ MyLaunchConfig, LoadBalancerTargetGroup]
+    DependsOn: [ MyLaunchConfig, LoadBalancerTargetGroup, LoadBalancerListener]
     Properties: 
       LaunchConfigurationName: !Ref LaunchConfigurationName 
       Cooldown: "60"
@@ -345,9 +343,9 @@ Resources:
   MyAppLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties: 
-      IpAddressType: dualstack
+      IpAddressType: ipv4
       Scheme: internet-facing
-      SecurityGroups: !Ref AppLoadBalancerSecurityGroup
+      SecurityGroups: [!Ref AppLoadBalancerSecurityGroup]
       Subnets: 
         - !Ref PublicSubnet1
         - !Ref PublicSubnet2
@@ -357,19 +355,19 @@ Resources:
           Key: Name
           Value: !Ref MyAppLoadBalancerName
 
-  #HTTP Listener for Application Load Balancer for redirection of HTTPS
-  HTTPlistener:
-   Type: "AWS::ElasticLoadBalancingV2::Listener"
-   Properties:
-     DefaultActions:
-       - Type: "redirect"
-         RedirectConfig:
-           Protocol: "HTTPS"
-           Port: "443"
-           StatusCode: "HTTP_301"
-     LoadBalancerArn: !Ref MyAppLoadBalancer
-     Port: 80
-     Protocol: "HTTP"
+  # #HTTP Listener for Application Load Balancer for redirection of HTTPS
+  # HTTPlistener:
+  #  Type: "AWS::ElasticLoadBalancingV2::Listener"
+  #  Properties:
+  #    DefaultActions:
+  #      - Type: "redirect"
+  #        RedirectConfig:
+  #          Protocol: "HTTPS"
+  #          Port: "443"
+  #          StatusCode: "HTTP_301"
+  #    LoadBalancerArn: !Ref MyAppLoadBalancer
+  #    Port: 80
+  #    Protocol: "HTTP"
 
   #Load Balancer Listener on port 80
   LoadBalancerListener:
@@ -420,13 +418,13 @@ Resources:
   CPUAlarmHigh: 
     Type: "AWS::CloudWatch::Alarm"
     Properties: 
-      AlarmDescription: "Scale-up if CPU > 5% for 3 minutes"
+      AlarmDescription: "Scale-up if CPU > 8% for 4 minutes"
       MetricName: CPUUtilization
       Namespace: "AWS/EC2"
       Statistic: Average
-      Period: 180
-      EvaluationPeriods: 1
-      Threshold: 5
+      Period: 120
+      EvaluationPeriods: 2
+      Threshold: 8
       AlarmActions: 
         - 
           Ref: WebServerScaleUpPolicy
@@ -440,12 +438,12 @@ Resources:
   CPUAlarmLow: 
     Type: "AWS::CloudWatch::Alarm"
     Properties: 
-      AlarmDescription: "Scale-down if CPU < 3% for 3 minutes"
+      AlarmDescription: "Scale-down if CPU < 3% for 4 minutes"
       MetricName: CPUUtilization
       Namespace: "AWS/EC2"
       Statistic: Average
-      Period: 180
-      EvaluationPeriods: 1
+      Period: 120
+      EvaluationPeriods: 2
       Threshold: 3
       AlarmActions: 
         - 
