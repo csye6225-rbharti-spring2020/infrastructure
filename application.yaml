@@ -193,6 +193,14 @@ Parameters:
     Description: Name of the Load Balancer
     Type: String
 
+  MyAppLoadBalancerName:
+    Description: Name of the App Load Balancer Name
+    Type: String
+
+  LoadBalancerTargetName:
+    Description: Name of the Load Balancer Target Name
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -298,7 +306,7 @@ Resources:
   #Creates the AutoScalingGroup, attaches the Launch configuration, sets the Subnets,  
   MyASG: 
     Type: AWS::AutoScaling::AutoScalingGroup
-    DependsOn: MyLaunchConfig
+    DependsOn: [ MyLaunchConfig, LoadBalancerTargetGroup]
     Properties: 
       LaunchConfigurationName: !Ref LaunchConfigurationName 
       Cooldown: "60"
@@ -309,6 +317,8 @@ Resources:
         - !Ref PublicSubnet1
         - !Ref PublicSubnet2
         - !Ref PublicSubnet3
+      TargetGroupARNs:
+        - !Ref LoadBalancerTargetGroup
       Tags:
         -                                        
           Key: Name
@@ -320,19 +330,57 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
       Properties: 
         IpAddressType: dualstack
-        LoadBalancerAttributes: 
-          - LoadBalancerAttribute
-        Name: String
-        Scheme: String
-        SecurityGroups: 
-          - String
-        SubnetMappings: 
-          - SubnetMapping
+        Scheme: internet-facing
+        SecurityGroups: !Ref AppLoadBalancerSecurityGroup
         Subnets: 
-          - String
+          - !Ref PublicSubnet1
+          - !Ref PublicSubnet2
+          - !Ref PublicSubnet3
         Tags: 
-          - Tag
-        Type: String
+          - 
+            Key: Name
+            Value: !Ref MyAppLoadBalancerName
+
+  #HTTP Listener for Application Load Balancer for redirection of HTTPS
+  HTTPlistener:
+   Type: "AWS::ElasticLoadBalancingV2::Listener"
+   Properties:
+     DefaultActions:
+       - Type: "redirect"
+         RedirectConfig:
+           Protocol: "HTTPS"
+           Port: "443"
+           StatusCode: "HTTP_301"
+     LoadBalancerArn: !GetAtt MyAppLoadBalancer.Arn
+     Port: 80
+     Protocol: "HTTP"
+
+  #Load Balancer Listener on port 80
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !GetAtt MyAppLoadBalancer.Arn
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !GetAtt LoadBalancerTargetGroup.Arn
+
+  #Target Group for Application Load Balancer
+  LoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      HealthCheckPath: "/"
+      HealthCheckPort: 8080
+      Name: !Ref LoadBalancerTargetName
+      Port: 8080
+      Protocol: "HTTP"
+      TargetType: instance
+      VpcId: !Ref VPC
+      Tags: 
+        - 
+          Key: Name
+          Value: !Ref LoadBalancerTargetName
 
   #Web Server Scale Up Policy
   WebServerScaleUpPolicy: 
@@ -577,6 +625,20 @@ Resources:
       - Key: Name
         Value: !Sub ${EnvironmentName} DBSubnetGroup
 
+  #Load Balancer Security Group
+  AppLoadBalancerSecurityGroup: 
+    Type: "AWS::EC2::SecurityGroup"
+    Properties: 
+      GroupName: LoadBalancerSecurityGroup
+      GroupDescription: Enables HTTPS via port 8080
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - 
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+
   #Creates the EC2 Security Group for the EC2 instance
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
@@ -597,11 +659,11 @@ Resources:
       - IpProtocol: tcp
         FromPort: 443
         ToPort: 443
-        CidrIp: 0.0.0.0/0
+        SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
       - IpProtocol: tcp
         FromPort: 8080
         ToPort: 8080
-        CidrIp: 0.0.0.0/0
+        SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
       Tags:                                      
       -                                        
         Key: Name
