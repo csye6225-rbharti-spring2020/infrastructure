@@ -189,12 +189,8 @@ Parameters:
     Description: Name of the S3 Bucket where the webapp's jar is uploaded
     Type: String
 
-  LoadBalancerName:
-    Description: Name of the Load Balancer
-    Type: String
-
   MyAppLoadBalancerName:
-    Description: Name of the App Load Balancer Name
+    Description: Name of the App Load Balancer
     Type: String
 
   LoadBalancerTargetName:
@@ -203,6 +199,10 @@ Parameters:
 
   MyDomainName:
     Description: Domain Name
+    Type: String
+
+  AutoScalingGroupName:
+    Description: Auto Scaling Group Name
     Type: String
 
 Resources:
@@ -344,18 +344,18 @@ Resources:
   #Application Load Balancer
   MyAppLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-      Properties: 
-        IpAddressType: dualstack
-        Scheme: internet-facing
-        SecurityGroups: !Ref AppLoadBalancerSecurityGroup
-        Subnets: 
-          - !Ref PublicSubnet1
-          - !Ref PublicSubnet2
-          - !Ref PublicSubnet3
-        Tags: 
-          - 
-            Key: Name
-            Value: !Ref MyAppLoadBalancerName
+    Properties: 
+      IpAddressType: dualstack
+      Scheme: internet-facing
+      SecurityGroups: !Ref AppLoadBalancerSecurityGroup
+      Subnets: 
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+      Tags: 
+        - 
+          Key: Name
+          Value: !Ref MyAppLoadBalancerName
 
   #HTTP Listener for Application Load Balancer for redirection of HTTPS
   HTTPlistener:
@@ -367,7 +367,7 @@ Resources:
            Protocol: "HTTPS"
            Port: "443"
            StatusCode: "HTTP_301"
-     LoadBalancerArn: !GetAtt MyAppLoadBalancer.Arn
+     LoadBalancerArn: !Ref MyAppLoadBalancer
      Port: 80
      Protocol: "HTTP"
 
@@ -375,12 +375,12 @@ Resources:
   LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !GetAtt MyAppLoadBalancer.Arn
+      LoadBalancerArn: !Ref MyAppLoadBalancer
       Port: 80
       Protocol: HTTP
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !GetAtt LoadBalancerTargetGroup.Arn
+          TargetGroupArn: !Ref LoadBalancerTargetGroup
 
   #Target Group for Application Load Balancer
   LoadBalancerTargetGroup:
