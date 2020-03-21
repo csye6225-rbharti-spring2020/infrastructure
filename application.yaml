@@ -201,6 +201,10 @@ Parameters:
     Description: Name of the Load Balancer Target Name
     Type: String
 
+  MyDomainName:
+    Description: Domain Name
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -302,6 +306,18 @@ Resources:
         -                                        
           Key: Name
           Value: !Ref LaunchConfigurationName 
+
+  #Resource Record Set to map the Load Balancer to a CNAME
+  MyDomain: 
+    Type: "AWS::Route53::RecordSet"
+    Properties: 
+      AliasTarget: 
+        DNSName: !GetAtt MyAppLoadBalancer.DNSName
+        EvaluateTargetHealth: true
+        HostedZoneId: !GetAtt MyAppLoadBalancer.CanonicalHostedZoneID
+      HostedZoneName: !Ref MyDomainName
+      Name: !Ref MyDomainName
+      Type: A
 
   #Creates the AutoScalingGroup, attaches the Launch configuration, sets the Subnets,  
   MyASG: 
