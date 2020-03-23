@@ -342,10 +342,12 @@ Resources:
   #Application Load Balancer
   MyAppLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: VPC
     Properties: 
       IpAddressType: ipv4
       Scheme: internet-facing
       SecurityGroups: [!Ref AppLoadBalancerSecurityGroup]
+      Type: application
       Subnets: 
         - !Ref PublicSubnet1
         - !Ref PublicSubnet2
@@ -377,6 +379,14 @@ Resources:
       Protocol: "HTTP"
       TargetType: instance
       VpcId: !Ref VPC
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        -
+          Key: deregistration_delay.timeout_seconds
+          Value: 20
       Tags: 
         - 
           Key: Name
@@ -458,7 +468,7 @@ Resources:
       DeploymentStyle:
         DeploymentOption: WITH_TRAFFIC_CONTROL
         DeploymentType: IN_PLACE
-      AutoScalingGroups: [ !Ref MyAppLoadBalancerName ]
+      AutoScalingGroups: [!Ref MyASG]
       LoadBalancerInfo:
         TargetGroupInfoList:
           - Name: !GetAtt LoadBalancerTargetGroup.TargetGroupName
@@ -687,6 +697,7 @@ Resources:
   #Creates the first subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the first availability zone in the same region
   PublicSubnet1:
     Type: AWS::EC2::Subnet
+    DependsOn: VPC
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select 
@@ -701,6 +712,7 @@ Resources:
   #Creates the second subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the second availability zone in the same region
   PublicSubnet2:
     Type: AWS::EC2::Subnet
+    DependsOn: VPC
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select 
@@ -715,6 +727,7 @@ Resources:
   #Creates the third subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the third availability zone in the same region
   PublicSubnet3:
     Type: AWS::EC2::Subnet
+    DependsOn: VPC
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select 
