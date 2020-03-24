@@ -205,6 +205,10 @@ Parameters:
     Description: Auto Scaling Group Name
     Type: String
 
+  SSLCertificateArn:
+    Description: SSL Certificate ARN
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -357,22 +361,38 @@ Resources:
           Key: Name
           Value: !Ref MyAppLoadBalancerName
 
-  #Load Balancer Listener on port 80
+  #Load Balancer Listener on port 80, forwards the incoming traffic to the Target Group
   LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !Ref MyAppLoadBalancer
-      Port: 80
-      Protocol: HTTP
+      Certificates:
+        - CertificateArn: !Ref SSLCertificateArn
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref LoadBalancerTargetGroup
+      LoadBalancerArn: !Ref MyAppLoadBalancer
+      Port: 443
+      Protocol: "HTTPS"
+
+  #Enables HTTPS on the Listener, forwards the HTTPS requests to port 80
+  HTTPlistener:
+   Type: "AWS::ElasticLoadBalancingV2::Listener"
+   Properties:
+     DefaultActions:
+       - Type: "redirect"
+         RedirectConfig:
+           Protocol: "HTTPS"
+           Port: "443"
+           StatusCode: "HTTP_301"
+     LoadBalancerArn: !Ref MyAppLoadBalancer
+     Port: 80
+     Protocol: "HTTP"
 
   #Target Group for Application Load Balancer
   LoadBalancerTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties: 
-      HealthCheckPath: "/"
+      HealthCheckPath: "/actuator/health"
       HealthCheckPort: 8080
       Name: !Ref LoadBalancerTargetName
       Port: 8080
@@ -633,12 +653,12 @@ Resources:
       - Key: Name
         Value: !Sub ${EnvironmentName} DBSubnetGroup
 
-  #Load Balancer Security Group
+  #Load Balancer Security Group, allows only HTTPS requests to come in 
   AppLoadBalancerSecurityGroup: 
     Type: "AWS::EC2::SecurityGroup"
     Properties: 
       GroupName: LoadBalancerSecurityGroup
-      GroupDescription: Enables HTTPS via port 8080
+      GroupDescription: Enables only HTTPS traffic to come in
       VpcId: !Ref VPC
       SecurityGroupIngress: 
         - 
@@ -647,7 +667,7 @@ Resources:
           ToPort: 443
           CidrIp: "0.0.0.0/0"
 
-  #Creates the EC2 Security Group for the EC2 instance
+  #Creates the EC2 Security Group for the EC2 instance, only the Load Balancer requests can access the EC2 instances
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     DependsOn: VPC
