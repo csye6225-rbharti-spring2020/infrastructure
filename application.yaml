@@ -45,8 +45,8 @@ Parameters:
     Description: Size of the EC2 Instance Size
     Type: Number
 
-  Ec2InstanceName:
-    Description: Name of the EC2 instance
+  LaunchConfigurationName:
+    Description: Name of the EC2 instance Launch Configuration
     Type: String
 
   DBEngine:
@@ -189,6 +189,26 @@ Parameters:
     Description: Name of the S3 Bucket where the webapp's jar is uploaded
     Type: String
 
+  MyAppLoadBalancerName:
+    Description: Name of the App Load Balancer
+    Type: String
+
+  LoadBalancerTargetName:
+    Description: Name of the Load Balancer Target Name
+    Type: String
+
+  MyDomainName:
+    Description: Domain Name
+    Type: String
+
+  AutoScalingGroupName:
+    Description: Auto Scaling Group Name
+    Type: String
+
+  SSLCertificateArn:
+    Description: SSL Certificate ARN
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -218,29 +238,24 @@ Resources:
               TransitionInDays: 30
               StorageClass: 'STANDARD_IA'
 
-  #Creates the EC2 instance and sets its configuration 
-  EC2Instance:
-    Type: AWS::EC2::Instance
-    DependsOn: [DBinstance, InternetGatewayAttachment]                     
-    Properties:
-      ImageId: !Ref AMIID
-      InstanceType:
-        Ref: InstanceTypeParameter
+  #Creates the Launch configuration for the autoscaling group
+  MyLaunchConfig: 
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties: 
       KeyName: !Ref KeyName
+      ImageId: !Ref AMIID
+      AssociatePublicIpAddress: true
+      InstanceType: !Ref InstanceTypeParameter
+      IamInstanceProfile: !Ref EC2S3InstanceProfile
       BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
             VolumeSize: !Ref Ec2InstanceSize
             VolumeType: !Ref Ec2VolumeType
             DeleteOnTermination: true
-      IamInstanceProfile: !Ref EC2S3InstanceProfile
-      NetworkInterfaces: 
-      - AssociatePublicIpAddress: true
-        DeviceIndex: "0"
-        GroupSet: 
-          - !Ref InstanceSecurityGroup
-        SubnetId: 
-          Ref: "PublicSubnet2"
+      SecurityGroups: 
+        - !Ref InstanceSecurityGroup
+      LaunchConfigurationName: !Ref LaunchConfigurationName
       UserData: !Base64 
         'Fn::Join':
           - ''
@@ -291,11 +306,167 @@ Resources:
               sudo echo export myRDS >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export bucketName >> /etc/profile.d/envvariable.sh
-      Tags:                                      
+            - |
+              sudo systemctl start amazon-cloudwatch-agent.service  
+
+  #Resource Record Set to map the Load Balancer to a CNAME
+  MyDomain: 
+    Type: "AWS::Route53::RecordSet"
+    Properties: 
+      AliasTarget: 
+        DNSName: !GetAtt MyAppLoadBalancer.DNSName
+        EvaluateTargetHealth: true
+        HostedZoneId: !GetAtt MyAppLoadBalancer.CanonicalHostedZoneID
+      HostedZoneName: !Ref MyDomainName
+      Name: !Ref MyDomainName
+      Type: A
+
+  #Creates the AutoScalingGroup, attaches the Launch configuration, sets the Subnets,  
+  MyASG: 
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn: [ MyLaunchConfig, LoadBalancerTargetGroup, LoadBalancerListener]
+    Properties: 
+      LaunchConfigurationName: !Ref LaunchConfigurationName 
+      Cooldown: "60"
+      MinSize: "2"
+      MaxSize: "10"
+      DesiredCapacity: "2"
+      VPCZoneIdentifier: 
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+      TargetGroupARNs:
+        - !Ref LoadBalancerTargetGroup
+      Tags:
         -                                        
           Key: Name
-          Value: !Ref Ec2InstanceName 
+          Value: !Ref AutoScalingGroupName
+          PropagateAtLaunch: true
 
+  #Application Load Balancer
+  MyAppLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: VPC
+    Properties: 
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      SecurityGroups: [!Ref AppLoadBalancerSecurityGroup]
+      Type: application
+      Subnets: 
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+      Tags: 
+        - 
+          Key: Name
+          Value: !Ref MyAppLoadBalancerName
+
+  #Load Balancer Listener on port 80, forwards the incoming traffic to the Target Group
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref SSLCertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref LoadBalancerTargetGroup
+      LoadBalancerArn: !Ref MyAppLoadBalancer
+      Port: 443
+      Protocol: "HTTPS"
+
+  #Enables HTTP Listener, forwards the incoming traffic to the Target Group
+  HTTPlistener:
+   Type: "AWS::ElasticLoadBalancingV2::Listener"
+   Properties:
+     DefaultActions:
+       - Type: forward
+         TargetGroupArn: !Ref LoadBalancerTargetGroup
+     LoadBalancerArn: !Ref MyAppLoadBalancer
+     Port: 80
+     Protocol: "HTTP"
+
+  #Target Group for Application Load Balancer
+  LoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      HealthCheckPath: "/actuator/health"
+      HealthCheckPort: 8080
+      Name: !Ref LoadBalancerTargetName
+      Port: 8080
+      Protocol: "HTTP"
+      TargetType: instance
+      VpcId: !Ref VPC
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        -
+          Key: deregistration_delay.timeout_seconds
+          Value: 20
+      Tags: 
+        - 
+          Key: Name
+          Value: !Ref LoadBalancerTargetName
+
+  #Web Server Scale Up Policy
+  WebServerScaleUpPolicy: 
+    Type: "AWS::AutoScaling::ScalingPolicy"
+    Properties: 
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref MyASG
+      Cooldown: 60
+      ScalingAdjustment: 1
+
+  #Web Server Scale Down Policy
+  WebServerScaleDownPolicy: 
+    Type: "AWS::AutoScaling::ScalingPolicy"
+    Properties: 
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref MyASG
+      Cooldown: 60
+      ScalingAdjustment: "-1"
+
+  #CPU Alarm High 
+  CPUAlarmHigh: 
+    Type: "AWS::CloudWatch::Alarm"
+    Properties: 
+      AlarmDescription: "Scale-up if CPU > 8% for 4 minutes"
+      MetricName: CPUUtilization
+      Namespace: "AWS/EC2"
+      Statistic: Average
+      Period: 120
+      EvaluationPeriods: 2
+      Threshold: 8
+      AlarmActions: 
+        - 
+          Ref: WebServerScaleUpPolicy
+      Dimensions: 
+        - 
+          Name: AutoScalingGroupName
+          Value: !Ref MyASG
+      ComparisonOperator: GreaterThanThreshold
+
+  #CPU Alarm Low
+  CPUAlarmLow: 
+    Type: "AWS::CloudWatch::Alarm"
+    Properties: 
+      AlarmDescription: "Scale-down if CPU < 3% for 4 minutes"
+      MetricName: CPUUtilization
+      Namespace: "AWS/EC2"
+      Statistic: Average
+      Period: 120
+      EvaluationPeriods: 2
+      Threshold: 3
+      AlarmActions: 
+        - 
+          Ref: WebServerScaleDownPolicy
+      Dimensions: 
+        - 
+          Name: AutoScalingGroupName
+          Value: !Ref MyASG
+      ComparisonOperator: LessThanThreshold
+  
   #Creates the CodeDeploy Application        
   CodeDeployApplication:
     Type: AWS::CodeDeploy::Application
@@ -312,14 +483,12 @@ Resources:
       DeploymentGroupName: !Ref CodeDeployDeploymentGroupName
       ServiceRoleArn: !GetAtt CodeDeployServiceIAMRole.Arn
       DeploymentStyle:
-        DeploymentOption: WITHOUT_TRAFFIC_CONTROL
+        DeploymentOption: WITH_TRAFFIC_CONTROL
         DeploymentType: IN_PLACE
-      Ec2TagFilters: 
-      - 
-        Key: "Name"
-        Value: !Ref Ec2InstanceName
-        Type: "KEY_AND_VALUE"
-      DeploymentConfigName: CodeDeployDefault.AllAtOnce
+      AutoScalingGroups: [!Ref MyASG]
+      LoadBalancerInfo:
+        TargetGroupInfoList:
+          - Name: !GetAtt LoadBalancerTargetGroup.TargetGroupName
       AutoRollbackConfiguration:
         Enabled: true
         Events: 
@@ -481,7 +650,26 @@ Resources:
       - Key: Name
         Value: !Sub ${EnvironmentName} DBSubnetGroup
 
-  #Creates the EC2 Security Group for the EC2 instance
+  #Load Balancer Security Group, allows only HTTPS requests to come in 
+  AppLoadBalancerSecurityGroup: 
+    Type: "AWS::EC2::SecurityGroup"
+    Properties: 
+      GroupName: LoadBalancerSecurityGroup
+      GroupDescription: Enables only HTTPS traffic to come in
+      VpcId: !Ref VPC
+      SecurityGroupIngress: 
+        - 
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - 
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+
+  #Creates the EC2 Security Group for the EC2 instance, only the Load Balancer requests can access the EC2 instances
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     DependsOn: VPC
@@ -497,15 +685,15 @@ Resources:
       - IpProtocol: tcp
         FromPort: 80
         ToPort: 80
-        CidrIp: 0.0.0.0/0
+        SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
       - IpProtocol: tcp
         FromPort: 443
         ToPort: 443
-        CidrIp: 0.0.0.0/0
+        SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
       - IpProtocol: tcp
         FromPort: 8080
         ToPort: 8080
-        CidrIp: 0.0.0.0/0
+        SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
       Tags:                                      
       -                                        
         Key: Name
@@ -531,6 +719,7 @@ Resources:
   #Creates the first subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the first availability zone in the same region
   PublicSubnet1:
     Type: AWS::EC2::Subnet
+    DependsOn: VPC
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select 
@@ -545,6 +734,7 @@ Resources:
   #Creates the second subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the second availability zone in the same region
   PublicSubnet2:
     Type: AWS::EC2::Subnet
+    DependsOn: VPC
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select 
@@ -559,6 +749,7 @@ Resources:
   #Creates the third subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the third availability zone in the same region
   PublicSubnet3:
     Type: AWS::EC2::Subnet
+    DependsOn: VPC
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select 
