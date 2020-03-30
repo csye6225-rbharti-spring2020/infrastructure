@@ -209,6 +209,22 @@ Parameters:
     Description: SSL Certificate ARN
     Type: String
 
+  SNSTopicName:
+    Description: SNS Topic Name
+    Type: String
+
+  LambdaApplicationZipName:
+    Description: Name of the zip file on the S3 Bucket
+    Type: String
+
+  LambdaFunctionName:
+    Description: Name of the Lambda Function
+    Type: String
+
+  SQSQueueName:
+    Description: Name of the SQS Queue
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -282,7 +298,11 @@ Resources:
             - !Sub |
               sudo echo userName=${DBUsername} >> /etc/profile.d/envvariable.sh 
             - |
-              sudo echo export userName >> /etc/profile.d/envvariable.sh 
+              sudo echo export userName >> /etc/profile.d/envvariable.sh
+            - !Sub |
+              sudo echo SNSTopicName=${SNSTopicName} >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export SNSTopicName >> /etc/profile.d/envvariable.sh 
             - !Sub >
               sudo echo pass=${DBPassword} >>
               /etc/profile.d/envvariable.sh 
@@ -301,11 +321,24 @@ Resources:
               - - sudo echo bucketName=
                 - !Ref S3Bucket
                 - |
+                  >> /etc/profile.d/envvariable.sh
+            - !Join 
+              - ''
+              - - 'sudo echo SQSQueueUrl='
+                - 'https://sqs.'
+                - !Sub ${awsRegion}
+                - '.amazonaws.com/'
+                - !Sub ${AWSAccountID}
+                - '/'
+                - !Sub ${SQSQueueName}
+                - |
                   >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export myRDS >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export bucketName >> /etc/profile.d/envvariable.sh
+            - |
+              sudo echo export SQSQueueUrl >> /etc/profile.d/envvariable.sh  
             - |
               sudo systemctl start amazon-cloudwatch-agent.service  
 
@@ -509,6 +542,69 @@ Resources:
       VPCSecurityGroups: [!Ref RDSInstanceSecurityGroup]
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: !Ref DBPublicAccessibility
+
+  #Creates the SNS Resource
+  MySNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: MySNSTopic
+      TopicName: !Ref SNSTopicName
+      Subscription:
+        - Endpoint:
+            Fn::GetAtt:
+              - LambdaFunction
+              - Arn
+          Protocol: lambda
+  
+  #Creates the SQS Queue
+  MyQueue: 
+    Type: AWS::SQS::Queue
+    Properties: 
+      QueueName: !Ref SQSQueueName
+  
+  #Creates the Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+  #Creates the Lamba SNS Resource Permission
+  LambaSNSResourcePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWSAccountID
+      SourceArn: !Join [':', ['arn:aws:sns:us-east-1', !Ref AWSAccountID, !Ref SNSTopicName]]
+  
+  #Creates the Lambda Function
+  LambdaFunction: 
+    Type: AWS::Lambda::Function
+    Properties: 
+      Handler: LogEvent::handleRequest
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code: 
+        S3Bucket: !Ref WebAppDeployS3Bucket
+        S3Key: !Ref LambdaApplicationZipName
+      Runtime: java8
+      Timeout: 180
+      MemorySize: 256
 
   #IAM Role for CodeDeploy to call AWS Services
   CodeDeployServiceIAMRole:
