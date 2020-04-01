@@ -225,6 +225,10 @@ Parameters:
     Description: Name of the SQS Queue
     Type: String
 
+  DynamoDBName:
+    Description: Name of the Dynamo DB Table
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
@@ -253,6 +257,23 @@ Resources:
             Transition:
               TransitionInDays: 30
               StorageClass: 'STANDARD_IA'
+
+  #Creates the DynamoDB Table
+  MyDynamoDB:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      AttributeDefinitions: 
+        - 
+          AttributeName: "EMAIL_ID"
+          AttributeType: "S"
+      ProvisionedThroughput: 
+        ReadCapacityUnits: "5"
+        WriteCapacityUnits: "5"
+      TableName: !Ref DynamoDBName
+      TimeToLiveSpecification: 
+        AttributeName: EMAIL_TTL
+        Enabled: true
+  
 
   #Creates the Launch configuration for the autoscaling group
   MyLaunchConfig: 
@@ -303,6 +324,10 @@ Resources:
               sudo echo SNSTopicName=${SNSTopicName} >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export SNSTopicName >> /etc/profile.d/envvariable.sh 
+            - !Sub |
+              sudo echo domainName=${MyDomainName} >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export domainName >> /etc/profile.d/envvariable.sh 
             - !Sub >
               sudo echo pass=${DBPassword} >>
               /etc/profile.d/envvariable.sh 
@@ -561,7 +586,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties: 
       QueueName: !Ref SQSQueueName
-  
+
   #Creates the Lambda Execution Role
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -639,6 +664,8 @@ Resources:
       Path: "/"
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
 
   #Creates the EC2 IAM Role's Policy to talk to S3 for Image Upload
   EC2S3RolePolicy: 
