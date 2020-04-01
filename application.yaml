@@ -274,7 +274,6 @@ Resources:
         AttributeName: EMAIL_TTL
         Enabled: true
   
-
   #Creates the Launch configuration for the autoscaling group
   MyLaunchConfig: 
     Type: AWS::AutoScaling::LaunchConfiguration
@@ -622,7 +621,7 @@ Resources:
   LambdaFunction: 
     Type: AWS::Lambda::Function
     Properties: 
-      Handler: LogEvent::handleRequest
+      Handler: Handler::handleRequest
       Role: !GetAtt LambdaExecutionRole.Arn
       Code: 
         S3Bucket: !Ref WebAppDeployS3Bucket
