@@ -114,7 +114,6 @@ Parameters:
   AMIID:
     Description: AMI-ID for the EC2 Instance.
     Type: String
-    Default: ami-0e45550c321406f56
 
   VpcName:
     Description: VPC Name.
@@ -229,10 +228,20 @@ Parameters:
     Description: Name of the Dynamo DB Table
     Type: String
 
+  CircleCILambdaFunctionPolicyName:
+    Description: Name of the Circle Ci Lambda Function Policy
+    Type: String
+    Default: CircleCI-Lambda-Function-Policy
+
+  MyDomainNameWebapp:
+    Description: Name of the Domain Name for the Webapp
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
     Type: AWS::EC2::VPC
+    DependsOn: InternetGateway
     Properties:
       CidrBlock: !Ref VpcCIDR
       EnableDnsSupport: true
@@ -266,6 +275,10 @@ Resources:
         - 
           AttributeName: "EMAIL_ID"
           AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "EMAIL_ID"
+          KeyType: "HASH"
       ProvisionedThroughput: 
         ReadCapacityUnits: "5"
         WriteCapacityUnits: "5"
@@ -324,7 +337,7 @@ Resources:
             - |
               sudo echo export SNSTopicName >> /etc/profile.d/envvariable.sh 
             - !Sub |
-              sudo echo domainName=${MyDomainName} >> /etc/profile.d/envvariable.sh 
+              sudo echo domainName=${MyDomainNameWebapp} >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export domainName >> /etc/profile.d/envvariable.sh 
             - !Sub >
@@ -613,14 +626,14 @@ Resources:
     Properties:
       FunctionName: !GetAtt LambdaFunction.Arn
       Action: lambda:InvokeFunction
-      Principal: s3.amazonaws.com
-      SourceAccount: !Ref AWSAccountID
+      Principal: sns.amazonaws.com
       SourceArn: !Join [':', ['arn:aws:sns:us-east-1', !Ref AWSAccountID, !Ref SNSTopicName]]
   
   #Creates the Lambda Function
   LambdaFunction: 
     Type: AWS::Lambda::Function
     Properties: 
+      FunctionName: !Ref LambdaFunctionName
       Handler: Handler::handleRequest
       Role: !GetAtt LambdaExecutionRole.Arn
       Code: 
@@ -759,6 +772,21 @@ Resources:
               - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':deploymentconfig:CodeDeployDefault.AllAtOnce']]
       Users: [ !Ref CircleCiIAMUserName ]
 
+  #IAM Policy for CircleCI IAM user to access Lambda Function
+  CircleCILambdaFunctionPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: !Ref CircleCILambdaFunctionPolicyName
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: 'Allow'
+            Action: ["lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:UpdateFunctionCode"]
+            Resource: 
+              - !Join [':', ['arn:aws:lambda', !Ref awsRegion, !Ref AWSAccountID, 'function', !Ref LambdaFunctionName ]]
+      Users: [ !Ref CircleCiIAMUserName ]
+
   #DB Subnet Group
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -886,7 +914,6 @@ Resources:
   #Creates an Internet Gateway for myVpc
   InternetGateway:
     Type: AWS::EC2::InternetGateway
-    DependsOn: VPC
     Properties:
       Tags:
       - Key: Name
