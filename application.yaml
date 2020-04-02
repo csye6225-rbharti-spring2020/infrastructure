@@ -114,7 +114,6 @@ Parameters:
   AMIID:
     Description: AMI-ID for the EC2 Instance.
     Type: String
-    Default: ami-0e45550c321406f56
 
   VpcName:
     Description: VPC Name.
@@ -209,10 +208,40 @@ Parameters:
     Description: SSL Certificate ARN
     Type: String
 
+  SNSTopicName:
+    Description: SNS Topic Name
+    Type: String
+
+  LambdaApplicationZipName:
+    Description: Name of the zip file on the S3 Bucket
+    Type: String
+
+  LambdaFunctionName:
+    Description: Name of the Lambda Function
+    Type: String
+
+  SQSQueueName:
+    Description: Name of the SQS Queue
+    Type: String
+
+  DynamoDBName:
+    Description: Name of the Dynamo DB Table
+    Type: String
+
+  CircleCILambdaFunctionPolicyName:
+    Description: Name of the Circle Ci Lambda Function Policy
+    Type: String
+    Default: CircleCI-Lambda-Function-Policy
+
+  MyDomainNameWebapp:
+    Description: Name of the Domain Name for the Webapp
+    Type: String
+
 Resources:
   #Creates the VPC, Enables DNS, uses VpcCIDR parameter defined in Parameters
   VPC:
     Type: AWS::EC2::VPC
+    DependsOn: InternetGateway
     Properties:
       CidrBlock: !Ref VpcCIDR
       EnableDnsSupport: true
@@ -238,6 +267,26 @@ Resources:
               TransitionInDays: 30
               StorageClass: 'STANDARD_IA'
 
+  #Creates the DynamoDB Table
+  MyDynamoDB:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      AttributeDefinitions: 
+        - 
+          AttributeName: "EMAIL_ID"
+          AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "EMAIL_ID"
+          KeyType: "HASH"
+      ProvisionedThroughput: 
+        ReadCapacityUnits: "5"
+        WriteCapacityUnits: "5"
+      TableName: !Ref DynamoDBName
+      TimeToLiveSpecification: 
+        AttributeName: EMAIL_TTL
+        Enabled: true
+  
   #Creates the Launch configuration for the autoscaling group
   MyLaunchConfig: 
     Type: AWS::AutoScaling::LaunchConfiguration
@@ -282,7 +331,15 @@ Resources:
             - !Sub |
               sudo echo userName=${DBUsername} >> /etc/profile.d/envvariable.sh 
             - |
-              sudo echo export userName >> /etc/profile.d/envvariable.sh 
+              sudo echo export userName >> /etc/profile.d/envvariable.sh
+            - !Sub |
+              sudo echo SNSTopicName=${SNSTopicName} >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export SNSTopicName >> /etc/profile.d/envvariable.sh 
+            - !Sub |
+              sudo echo domainName=${MyDomainNameWebapp} >> /etc/profile.d/envvariable.sh 
+            - |
+              sudo echo export domainName >> /etc/profile.d/envvariable.sh 
             - !Sub >
               sudo echo pass=${DBPassword} >>
               /etc/profile.d/envvariable.sh 
@@ -301,11 +358,24 @@ Resources:
               - - sudo echo bucketName=
                 - !Ref S3Bucket
                 - |
+                  >> /etc/profile.d/envvariable.sh
+            - !Join 
+              - ''
+              - - 'sudo echo SQSQueueUrl='
+                - 'https://sqs.'
+                - !Sub ${awsRegion}
+                - '.amazonaws.com/'
+                - !Sub ${AWSAccountID}
+                - '/'
+                - !Sub ${SQSQueueName}
+                - |
                   >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export myRDS >> /etc/profile.d/envvariable.sh 
             - |
               sudo echo export bucketName >> /etc/profile.d/envvariable.sh
+            - |
+              sudo echo export SQSQueueUrl >> /etc/profile.d/envvariable.sh  
             - |
               sudo systemctl start amazon-cloudwatch-agent.service  
 
@@ -510,6 +580,69 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: !Ref DBPublicAccessibility
 
+  #Creates the SNS Resource
+  MySNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: MySNSTopic
+      TopicName: !Ref SNSTopicName
+      Subscription:
+        - Endpoint:
+            Fn::GetAtt:
+              - LambdaFunction
+              - Arn
+          Protocol: lambda
+  
+  #Creates the SQS Queue
+  MyQueue: 
+    Type: AWS::SQS::Queue
+    Properties: 
+      QueueName: !Ref SQSQueueName
+
+  #Creates the Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+  #Creates the Lamba SNS Resource Permission
+  LambaSNSResourcePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Join [':', ['arn:aws:sns:us-east-1', !Ref AWSAccountID, !Ref SNSTopicName]]
+  
+  #Creates the Lambda Function
+  LambdaFunction: 
+    Type: AWS::Lambda::Function
+    Properties: 
+      FunctionName: !Ref LambdaFunctionName
+      Handler: Handler::handleRequest
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code: 
+        S3Bucket: !Ref WebAppDeployS3Bucket
+        S3Key: !Ref LambdaApplicationZipName
+      Runtime: java8
+      Timeout: 180
+      MemorySize: 256
+
   #IAM Role for CodeDeploy to call AWS Services
   CodeDeployServiceIAMRole:
     Type: AWS::IAM::Role
@@ -543,6 +676,8 @@ Resources:
       Path: "/"
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
 
   #Creates the EC2 IAM Role's Policy to talk to S3 for Image Upload
   EC2S3RolePolicy: 
@@ -635,6 +770,21 @@ Resources:
               - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':deploymentconfig:CodeDeployDefault.OneAtATime']]
               - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':deploymentconfig:CodeDeployDefault.HalfAtATime']]
               - !Join ['', ['arn:aws:codedeploy:', !Ref awsRegion, ':', !Ref AWSAccountID, ':deploymentconfig:CodeDeployDefault.AllAtOnce']]
+      Users: [ !Ref CircleCiIAMUserName ]
+
+  #IAM Policy for CircleCI IAM user to access Lambda Function
+  CircleCILambdaFunctionPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: !Ref CircleCILambdaFunctionPolicyName
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: 'Allow'
+            Action: ["lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:UpdateFunctionCode"]
+            Resource: 
+              - !Join [':', ['arn:aws:lambda', !Ref awsRegion, !Ref AWSAccountID, 'function', !Ref LambdaFunctionName ]]
       Users: [ !Ref CircleCiIAMUserName ]
 
   #DB Subnet Group
@@ -764,7 +914,6 @@ Resources:
   #Creates an Internet Gateway for myVpc
   InternetGateway:
     Type: AWS::EC2::InternetGateway
-    DependsOn: VPC
     Properties:
       Tags:
       - Key: Name
