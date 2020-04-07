@@ -431,7 +431,7 @@ Resources:
           Key: Name
           Value: !Ref MyAppLoadBalancerName
 
-  #Load Balancer Listener on port 80, forwards the incoming traffic to the Target Group
+  #Load Balancer Listener on port 443, forwards the incoming HTTPS traffic to the Target Group
   LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -443,17 +443,6 @@ Resources:
       LoadBalancerArn: !Ref MyAppLoadBalancer
       Port: 443
       Protocol: "HTTPS"
-
-  #Enables HTTP Listener, forwards the incoming traffic to the Target Group
-  HTTPlistener:
-   Type: "AWS::ElasticLoadBalancingV2::Listener"
-   Properties:
-     DefaultActions:
-       - Type: forward
-         TargetGroupArn: !Ref LoadBalancerTargetGroup
-     LoadBalancerArn: !Ref MyAppLoadBalancer
-     Port: 80
-     Protocol: "HTTP"
 
   #Target Group for Application Load Balancer
   LoadBalancerTargetGroup:
@@ -808,11 +797,6 @@ Resources:
       GroupDescription: Enables only HTTPS traffic to come in
       VpcId: !Ref VPC
       SecurityGroupIngress: 
-        - 
-          IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: "0.0.0.0/0"
         - 
           IpProtocol: tcp
           FromPort: 443
