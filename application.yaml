@@ -568,6 +568,7 @@ Resources:
       VPCSecurityGroups: [!Ref RDSInstanceSecurityGroup]
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: !Ref DBPublicAccessibility
+      StorageEncrypted: true
 
   #Creates the SNS Resource
   MySNSTopic:
