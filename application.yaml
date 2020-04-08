@@ -347,12 +347,14 @@ Resources:
               sudo echo export pass >> /etc/profile.d/envvariable.sh 
             - !Join 
               - ''
-              - - 'echo myRDS=jdbc:mysql://'
+              - - 'sudo echo myRDS='
+                - 'jdbc:mysql://'
                 - !GetAtt 
                   - DBinstance
                   - Endpoint.Address
-                - !Sub |
-                  :3306/${DBName} >> /etc/profile.d/envvariable.sh 
+                - !Sub >
+                  :3306/${DBName} >> 
+                  /etc/profile.d/envvariable.sh 
             - !Join 
               - ''
               - - sudo echo bucketName=
@@ -569,6 +571,15 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: !Ref DBPublicAccessibility
       StorageEncrypted: true
+      DBParameterGroupName: !Ref RDSDBParameterGroup
+
+  RDSDBParameterGroup: 
+    Type: "AWS::RDS::DBParameterGroup"
+    Properties: 
+      Description: "Enables Performance Schema for the RDS Instance"
+      Family: mysql5.7
+      Parameters: 
+       performance_schema: 1
 
   #Creates the SNS Resource
   MySNSTopic:
