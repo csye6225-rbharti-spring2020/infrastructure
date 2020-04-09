@@ -824,26 +824,22 @@ Resources:
       GroupDescription: Enables TCP traffic on ports 22, 80, 443 and 8080
       VpcId: !Ref VPC
       SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: 22
-        ToPort: 22
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 80
-        ToPort: 80
-        SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
-      - IpProtocol: tcp
-        FromPort: 443
-        ToPort: 443
-        SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
-      - IpProtocol: tcp
-        FromPort: 8080
-        ToPort: 8080
-        SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !GetAtt AppLoadBalancerSecurityGroup.GroupId
       Tags:                                      
-      -                                        
-        Key: Name
-        Value: !Ref InstanceSecurityGroupName
+        -                                        
+          Key: Name
+          Value: !Ref InstanceSecurityGroupName
 
   #Creates the EC2 Security Group for the RDS Instance
   RDSInstanceSecurityGroup: 
@@ -853,14 +849,14 @@ Resources:
       GroupDescription: Enables TCP traffic on port 3306 for MySQL
       VpcId: !Ref VPC
       SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: 3306
-        ToPort: 3306
-        SourceSecurityGroupId: !GetAtt InstanceSecurityGroup.GroupId
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !GetAtt InstanceSecurityGroup.GroupId
       Tags:                                      
-      -                                        
-        Key: Name
-        Value: !Ref RDSInstanceSecurityGroupName
+        -                                        
+          Key: Name
+          Value: !Ref RDSInstanceSecurityGroupName
 
   #Creates the first subnet, Refers the VPC defined above, Sets the ipv4 CIDR block from parameters, Gets the first availability zone in the same region
   PublicSubnet1:
